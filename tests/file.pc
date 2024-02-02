@@ -1,0 +1,2 @@
+DISPLAY("hello world")
+DISPLAY("goodbye world")
