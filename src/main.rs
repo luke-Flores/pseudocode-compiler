@@ -1,6 +1,7 @@
 use std::fs;
 use std::env;
 use cbpcc::parts::tokenizer;
+use cbpcc::parts::tokenizer::tokenize;
 
 fn main(){
     let mut argv = env::args();
@@ -22,11 +23,7 @@ fn main(){
 }
 
 fn tokenize_stage(input: String){
-    let mut product = tokenizer::TokenStream{
-        tokens: Vec::new(),
-    };
-    let mut proccessed_string = tokenizer::preproccess(&input);
-    //product.tokenize(proccessed_string);
+    let token_stream = tokenize(input);
 
-    println!("contents: {:?}", proccessed_string);
+    println!("contents: {:?}", token_stream);
 }
