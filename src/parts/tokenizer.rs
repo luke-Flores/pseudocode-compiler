@@ -27,6 +27,7 @@ enum TokenIds{
     Return,
     StringBeg,
     StringEnd,
+    Stringval,
 }
 
 
@@ -41,12 +42,37 @@ struct DevelopingTokens{
     //flags
     function_parameters: bool,
     in_string: bool,
+    temp: Vec<String>,
 }
 
 impl DevelopingTokens{
     fn match_tokens(&mut self, input: &Vec<&str>){
         for (i, val) in input.iter().enumerate(){
-            if val == &"(" {
+            if self.in_string{
+                if val == &"\""{
+                    self.in_string = false;
+                    let mut string: String = String::new();
+                    for temp_string in self.temp.iter(){
+                        string.push_str(temp_string);
+                    }
+                    self.stream.push(Token{
+                        id: TokenIds::Stringval,
+                        value: string,
+                    });
+                    self.stream.push(Token{
+                        id: TokenIds::StringEnd,
+                        value: "\"".to_string(),
+                    });
+
+
+                    self.temp = Vec::new();
+                }
+                else{
+                    self.temp.push(val.to_string());
+                }
+
+            }
+            else if val == &"(" {
                 if i != 0{
                     self.stream.push(Token{
                         id: TokenIds::FunctionName,
@@ -63,21 +89,18 @@ impl DevelopingTokens{
                 }
             }
             else if val == &"\""{
-                if !self.in_string{
-                    self.stream.push(Token{
-                        id: TokenIds::StringBeg,
-                        value: "\"".to_string(),
-                    });
-
-                }
-                else {
-                    self.in_string = true;
-
-                }
+                self.stream.push(Token{
+                    id: TokenIds::StringBeg,
+                    value: "\"".to_string(),
+                });
+                self.in_string = true;
             }
 
             else  if val == &")"{
-                let useless = 0;
+                self.stream.push(Token{
+                    id: TokenIds::FunctionEnd,
+                    value: ")".to_string(),
+                });
             }
         }
     }
@@ -106,6 +129,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
         stream: Vec::new(),
         function_parameters: false,
         in_string: false,
+        temp: Vec::new(),
     };
     res.match_tokens(&preproccessed);
     return res.stream.clone();
