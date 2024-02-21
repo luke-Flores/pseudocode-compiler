@@ -28,6 +28,7 @@ enum TokenIds{
     StringBeg,
     StringEnd,
     Stringval,
+    Terminator,
 }
 
 
@@ -43,6 +44,7 @@ struct DevelopingTokens{
     function_parameters: bool,
     in_string: bool,
     temp: Vec<String>,
+    untokenized: u16,
 }
 
 impl DevelopingTokens{
@@ -68,9 +70,11 @@ impl DevelopingTokens{
                     self.temp = Vec::new();
                 }
                 else{
+                    if self.temp.len() != 0{
+                        self.temp.push(" ".to_string());
+                    }
                     self.temp.push(val.to_string());
                 }
-
             }
             else if val == &"(" {
                 if i != 0{
@@ -83,6 +87,7 @@ impl DevelopingTokens{
                         value: "(".to_string(),
                     });
                     self.function_parameters = true;
+                    self.untokenized-=1;
                 }
                 else {
                     panic!("Function called without name, aborting");
@@ -101,6 +106,25 @@ impl DevelopingTokens{
                     id: TokenIds::FunctionEnd,
                     value: ")".to_string(),
                 });
+                self.function_parameters = false;
+            }
+            else if val == &"\n"{
+                if self.untokenized != 0{
+                    panic!("Failed to tokenize a statement.");
+                }
+                else if self.function_parameters{
+                    panic!("Terminator apeared inside of a function declaration");
+                }
+                else{
+                    self.stream.push(Token{
+                        id: TokenIds::Terminator,
+                        value: "\n".to_string(),
+                    });
+                }
+            }
+            // there are empty string idk why
+            else if val != &""{
+                self.untokenized+=1;
             }
         }
     }
@@ -113,7 +137,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
     for letter in input.chars() {
         match letter {
             // split string at these values plus space
-            ')' | '(' | '\"' => {
+            ')' | '(' | '\"' | '\n' => {
                 preproccessed.push(' ');
                 preproccessed.push(letter);
                 preproccessed.push(' ');
@@ -130,6 +154,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
         function_parameters: false,
         in_string: false,
         temp: Vec::new(),
+        untokenized: 0,
     };
     res.match_tokens(&preproccessed);
     return res.stream.clone();

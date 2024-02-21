@@ -25,5 +25,5 @@ fn main(){
 fn tokenize_stage(input: String){
     let token_stream = tokenize(input);
 
-    println!("contents: {:?}", token_stream);
+    println!("contents: {:#?}", token_stream);
 }
