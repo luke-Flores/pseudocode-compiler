@@ -2,7 +2,6 @@
     CBPCC - an implementation of the CSP pseudocode language
     Copyright (C) 2024  Luke Flores
 
-<<<<<<< HEAD
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as published
     by the Free Software Foundation, either version 3 of the License, or
@@ -46,6 +45,7 @@ enum TokenIds{
     StringEnd,
     Stringval,
     Terminator,
+    Num,
 }
 
 
@@ -125,17 +125,36 @@ impl DevelopingTokens{
                 });
                 self.function_parameters = false;
             }
-            else if val == &">"{
-                if i > 1{
-                    if input[i-1] == "-"{
-                        self.stream.push(Token{
-                            id: TokenIds::Asigment,
-                            value: "->".to_string(),
-                        });
+            else if val == &"<"{
+                if i < input.len()-2{
+                    if i > 0{
+                        if input[i+1] == "-"{
+                            self.stream.push(Token{
+                                id: TokenIds::VarName,
+                                value: input[i-1].to_string(),
+                            });
+                            self.stream.push(Token{
+                                id: TokenIds::Asigment,
+                                value: "<-".to_string(),
+                            });
+                            // skip the '-'
+                            input.iter().next();
+                            self.untokenized-=1;
+                        }
+                    }
+                    else {
+                        panic!("<- operator occured without a variable");
                     }
                 }
                 else{
-                    panic!("> operator occured without anything before it");
+                    panic!("asignment operator is incomplete");
+                }
+            }
+            else if val == &"-"{
+                if i > 0 {
+                    if input[i-1] != "<"{
+                        self.untokenized+=1;
+                    }
                 }
             }
             else if val == &"\n"{
@@ -152,6 +171,12 @@ impl DevelopingTokens{
                     });
                 }
             }
+            else if val.parse::<f64>().is_ok(){
+                self.stream.push(Token{
+                    id: TokenIds::Num,
+                    value: val.to_string(),
+                });
+            }
             else{
                 self.untokenized+=1;
             }
@@ -166,7 +191,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
     for letter in input.chars() {
         match letter {
             // split string at these values plus space
-            ')' | '(' | '\"' | '\n' | '>' | '-' => {
+            ')' | '(' | '\"' | '\n' | '>' | '<'=> {
                 preproccessed.push(' ');
                 preproccessed.push(letter);
                 preproccessed.push(' ');
@@ -189,7 +214,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
             }
         }
     }
-    println!("{:?}", preproccessed);
+    println!("{:#?}", preproccessed);
 
     let mut res = DevelopingTokens{
         stream: Vec::new(),
