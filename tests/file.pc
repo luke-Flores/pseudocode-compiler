@@ -1,2 +1,2 @@
-DISPLAY("hello world")
+    DISPLAY("hello  world")
 var <- 1

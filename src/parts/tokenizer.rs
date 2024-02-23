@@ -177,7 +177,8 @@ impl DevelopingTokens{
                     value: val.to_string(),
                 });
             }
-            else{
+            //dont count whitespace
+            else if val != &" " && val != &"\t"{
                 self.untokenized+=1;
             }
         }
@@ -192,7 +193,12 @@ pub fn tokenize(input: String) -> Vec<Token>{
         match letter {
             // split string at these values plus space
             ')' | '(' | '\"' | '\n' | '>' | '<'=> {
-                preproccessed.push(' ');
+                //prevent useless empty strings forming
+                if preproccessed.len() > 0{
+                    if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
+                        preproccessed.push(' ');
+                    }
+                }
                 preproccessed.push(letter);
                 preproccessed.push(' ');
             },
@@ -207,7 +213,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
         let mut i = 0;
         while i< preproccessed.len(){
             if preproccessed[i] == ""{
-                preproccessed.remove(i);
+                preproccessed[i]=" ";
             }
             else{
                 i+=1;
