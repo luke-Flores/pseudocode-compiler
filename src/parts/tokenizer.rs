@@ -87,7 +87,7 @@ impl DevelopingTokens{
                     self.temp = Vec::new();
                 }
                 else{
-                    if self.temp.len() != 0{
+                    if self.temp.len() != 0 && self.temp[self.temp.len() -1] != " "{
                         self.temp.push(" ".to_string());
                     }
                     self.temp.push(val.to_string());
@@ -157,6 +157,12 @@ impl DevelopingTokens{
                     }
                 }
             }
+            else if val == &"+" || val == &"*" || val == &"/"{
+                self.stream.push(Token{
+                    id: TokenIds::Operand,
+                    value: val.to_string(),
+                });
+            }
             else if val == &"\n"{
                 if self.untokenized != 0{
                     panic!("Failed to tokenize a statement.");
@@ -187,7 +193,6 @@ impl DevelopingTokens{
 
 pub fn tokenize(input: String) -> Vec<Token>{
     // make mainpulating easier
-    //let mut token_stream: Vec<Token> = Vec::new();
     let mut preproccessed: String = String::with_capacity(input.len());
     for letter in input.chars() {
         match letter {
@@ -220,7 +225,6 @@ pub fn tokenize(input: String) -> Vec<Token>{
             }
         }
     }
-    println!("{:#?}", preproccessed);
 
     let mut res = DevelopingTokens{
         stream: Vec::new(),
