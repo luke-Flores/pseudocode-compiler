@@ -2,6 +2,7 @@
     CBPCC - an implementation of the CSP pseudocode language
     Copyright (C) 2024  Luke Flores
 
+<<<<<<< HEAD
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as published
     by the Free Software Foundation, either version 3 of the License, or
@@ -15,7 +16,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum TokenIds{
     FunctionBeg,
     FunctionEnd,
@@ -48,7 +49,7 @@ enum TokenIds{
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Token{
     id: TokenIds,
     value: String,
@@ -96,7 +97,7 @@ impl DevelopingTokens{
                 if i != 0{
                     self.stream.push(Token{
                         id: TokenIds::FunctionName,
-                        value: input.iter().nth(i-1).unwrap().to_string(),
+                        value: input[i-1].to_string(),
                     });
                     self.stream.push(Token{
                         id: TokenIds::FunctionBeg,
@@ -124,6 +125,19 @@ impl DevelopingTokens{
                 });
                 self.function_parameters = false;
             }
+            else if val == &">"{
+                if i > 1{
+                    if input[i-1] == "-"{
+                        self.stream.push(Token{
+                            id: TokenIds::Asigment,
+                            value: "->".to_string(),
+                        });
+                    }
+                }
+                else{
+                    panic!("> operator occured without anything before it");
+                }
+            }
             else if val == &"\n"{
                 if self.untokenized != 0{
                     panic!("Failed to tokenize a statement.");
@@ -138,8 +152,7 @@ impl DevelopingTokens{
                     });
                 }
             }
-            // there are empty string idk why
-            else if val != &""{
+            else{
                 self.untokenized+=1;
             }
         }
@@ -153,7 +166,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
     for letter in input.chars() {
         match letter {
             // split string at these values plus space
-            ')' | '(' | '\"' | '\n' => {
+            ')' | '(' | '\"' | '\n' | '>' | '-' => {
                 preproccessed.push(' ');
                 preproccessed.push(letter);
                 preproccessed.push(' ');
@@ -162,8 +175,21 @@ pub fn tokenize(input: String) -> Vec<Token>{
         }
     }
 
-    let preproccessed: Vec<&str> = preproccessed.split(' ').collect();
-    //let token_stream: Vec<Token> = Vec::new();
+    let mut preproccessed: Vec<&str> = preproccessed.split(' ').collect();
+
+    //remove empty strings so they don't cause problems
+    {
+        let mut i = 0;
+        while i< preproccessed.len(){
+            if preproccessed[i] == ""{
+                preproccessed.remove(i);
+            }
+            else{
+                i+=1;
+            }
+        }
+    }
+    println!("{:?}", preproccessed);
 
     let mut res = DevelopingTokens{
         stream: Vec::new(),
@@ -173,7 +199,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
         untokenized: 0,
     };
     res.match_tokens(&preproccessed);
-    return res.stream.clone();
+    return res.stream;
 }
 
 
