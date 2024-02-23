@@ -1,2 +1,2 @@
 DISPLAY("hello world")
-DISPLAY("goodbye world")
+var <- 1
