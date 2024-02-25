@@ -67,12 +67,19 @@ struct DevelopingTokens{
     in_string: bool,
     untokenized: u16,
     neg_num: bool,
+    skip: u8,
 }
 
 impl DevelopingTokens{
     fn match_tokens(&mut self, input: &Vec<&str>){
         'tokenloop : for (i, val) in input.iter().enumerate(){
-            if self.in_string{
+            if self.skip != 0{
+                // reset neg_num
+                self.neg_num=false;
+                self.skip-=1;
+                continue;
+            }
+            else if self.in_string{
                 if val == &"\""{
                     self.in_string = false;
                     let mut string: String = String::new();
@@ -130,30 +137,21 @@ impl DevelopingTokens{
                 });
                 self.function_parameters = false;
             }
-            else if val == &"<"{
-                if i < input.len()-2{
-                    if i > 0{
-                        if input[i+1] == "-"{
-                            self.stream.push(Token{
-                                id: TokenIds::VarDec,
-                                value: input[i-1].to_string(),
-                            });
-                            self.vars.push(input[i-1].to_string());
-                            self.stream.push(Token{
-                                id: TokenIds::Asigment,
-                                value: "<-".to_string(),
-                            });
-                            // skip the '-'
-                            input.iter().next();
-                            self.untokenized-=1;
-                        }
-                    }
-                    else {
-                        panic!("<- operator occured without a variable");
-                    }
+            else if val == &"<-"{
+                if i > 0{
+                    self.stream.push(Token{
+                        id: TokenIds::VarDec,
+                        value: input[i-1].to_string(),
+                    });
+                    self.stream.push(Token{
+                        id: TokenIds::Asigment,
+                        value: "<-".to_string(),
+                    });
+                    self.untokenized-=1;
+                    self.vars.push(input[i-1].to_string());
                 }
-                else{
-                    panic!("asignment operator is incomplete");
+                else {
+                    panic!("<- used without a variable name");
                 }
             }
             else if val == &"-"{
@@ -175,11 +173,40 @@ impl DevelopingTokens{
                     continue 'tokenloop;
                 }
             }
-            else if val == &"+" || val == &"*" || val == &"/" || val == &"MOD"{
+            else if val == &"+" || val == &"*" || val == &"/" || val == &"MOD" || val == &"="{
                 self.stream.push(Token{
                     id: TokenIds::Operand,
                     value: val.to_string(),
                 });
+            }
+            else if val == &"!" {
+                match input.iter().nth(i+1){
+                    Some(&"=") =>{
+                        self.stream.push(Token{
+                            id: TokenIds::Operand,
+                            value: "!=".to_string(),
+                        });
+                        self.skip+=1;
+                    },
+                    _ => panic!("Expected = after ! but did not get any value or a different value"),
+                }
+            }
+            else if val == &">" || val == &"<"{
+                match input.iter().nth(i+1){
+                    Some(&"=") =>{
+                        self.stream.push(Token{
+                            id: TokenIds::Operand,
+                            value: format!("{}=",val),
+                        });
+                        self.skip+=1;
+                    },
+                    _ => {
+                        self.stream.push(Token{
+                            id: TokenIds::Operand,
+                            value: val.to_string(),
+                        });
+                    },
+                }
             }
             else if val == &"\n"{
                 if self.untokenized != 0{
@@ -219,53 +246,78 @@ impl DevelopingTokens{
 
                     }
                 }
+                println!("{}", val);
                 self.untokenized+=1;
             }
             // reset the neg_num flag so that every number doesnt become negative
             self.neg_num = false;
         }
-        // add a terminator at the end of every file
-        self.stream.push(Token{
-            id: TokenIds::Terminator,
-            value: "".to_string(),
-        });
+    }
+}
+
+fn preproccess(preproccessed: &mut String, input: String){
+    let mut chars = input.chars();
+    let mut i = 0;
+    while let Some(letter) = chars.next(){
+        match letter {
+            // split string at these values plus space
+            ')' | '('| '<' | '\"' | '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!'=> {
+                //prevent useless empty strings forming
+                if i > 0{
+                    if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
+                        preproccessed.push(' ');
+                    }
+                }
+                preproccessed.push(letter);
+                // if it is <- then concatenate it
+                if letter == '<'{
+                    match input.chars().nth(i+1){
+                        Some('-') => {
+                            preproccessed.push('-');
+                            // skip over the '-'
+                            i+=1;
+                            chars.next();
+                        },
+                        _ => (),
+                    }
+                }
+                preproccessed.push(' ');
+            },
+            ' ' => {
+                if i > 0{
+                    if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
+                        preproccessed.push(' ');
+                    }
+                }
+            }
+            _ => preproccessed.push(letter),
+        }
+        i+=1;
+    }
+
+}
+
+fn replace_empty_strings(preproccessed: &mut Vec<&str>){
+    let mut i = 0;
+    while i< preproccessed.len(){
+        if preproccessed[i] == ""{
+            preproccessed[i]=" ";
+        }
+        else{
+            i+=1;
+        }
     }
 }
 
 pub fn tokenize(input: String) -> Vec<Token>{
     // make mainpulating easier
     let mut preproccessed: String = String::with_capacity(input.len());
-    for letter in input.chars() {
-        match letter {
-            // split string at these values plus space
-            ')' | '(' | '\"' | '\n' | '>' | '<' | '-' | '*' | '+' | '/'=> {
-                //prevent useless empty strings forming
-                if preproccessed.len() > 0{
-                    if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
-                        preproccessed.push(' ');
-                    }
-                }
-                preproccessed.push(letter);
-                preproccessed.push(' ');
-            },
-            _ => preproccessed.push(letter),
-        }
-    }
+    preproccess(&mut preproccessed, input.clone());
 
     let mut preproccessed: Vec<&str> = preproccessed.split(' ').collect();
 
     //replace empty strings so they don't cause problems
-    {
-        let mut i = 0;
-        while i< preproccessed.len(){
-            if preproccessed[i] == ""{
-                preproccessed[i]=" ";
-            }
-            else{
-                i+=1;
-            }
-        }
-    }
+    replace_empty_strings(&mut preproccessed);
 
     let mut res = DevelopingTokens{
         stream: Vec::new(),
@@ -275,6 +327,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
         untokenized: 0,
         neg_num: false,
         vars: Vec::new(),
+        skip: 0,
     };
     res.match_tokens(&preproccessed);
     return res.stream;
