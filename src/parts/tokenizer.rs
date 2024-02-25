@@ -15,7 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 enum TokenIds{
     FunctionBeg,
     FunctionEnd,
@@ -34,6 +34,7 @@ enum TokenIds{
     ArrayBeg,
     ArrayEnd,
     Data,
+    VarDec,
     VarName,
     ArrayName,
     For,
@@ -57,16 +58,20 @@ pub struct Token{
 
 struct DevelopingTokens{
     stream: Vec<Token>,
+    // i would off load variables to codegen time but variable declarations needs to happen during
+    // tokenization
+    vars: Vec<String>,
+    temp: Vec<String>,
     //flags
     function_parameters: bool,
     in_string: bool,
-    temp: Vec<String>,
     untokenized: u16,
+    neg_num: bool,
 }
 
 impl DevelopingTokens{
     fn match_tokens(&mut self, input: &Vec<&str>){
-        for (i, val) in input.iter().enumerate(){
+        'tokenloop : for (i, val) in input.iter().enumerate(){
             if self.in_string{
                 if val == &"\""{
                     self.in_string = false;
@@ -130,9 +135,10 @@ impl DevelopingTokens{
                     if i > 0{
                         if input[i+1] == "-"{
                             self.stream.push(Token{
-                                id: TokenIds::VarName,
+                                id: TokenIds::VarDec,
                                 value: input[i-1].to_string(),
                             });
+                            self.vars.push(input[i-1].to_string());
                             self.stream.push(Token{
                                 id: TokenIds::Asigment,
                                 value: "<-".to_string(),
@@ -151,13 +157,25 @@ impl DevelopingTokens{
                 }
             }
             else if val == &"-"{
-                if i > 0 {
-                    if input[i-1] != "<"{
-                        self.untokenized+=1;
+                if self.stream.len() > 0{
+                    let prev_token = self.stream[self.stream.len()-1].id;
+                    if prev_token == TokenIds::Num || prev_token == TokenIds::VarName{
+                        self.stream.push(Token{
+                            id: TokenIds::Operand,
+                            value: "-".to_string(),
+                        });
+                    }
+                    else{
+                        self.neg_num = true;
+                        continue 'tokenloop;
                     }
                 }
+                else{
+                    self.neg_num = true;
+                    continue 'tokenloop;
+                }
             }
-            else if val == &"+" || val == &"*" || val == &"/"{
+            else if val == &"+" || val == &"*" || val == &"/" || val == &"MOD"{
                 self.stream.push(Token{
                     id: TokenIds::Operand,
                     value: val.to_string(),
@@ -178,16 +196,39 @@ impl DevelopingTokens{
                 }
             }
             else if val.parse::<f64>().is_ok(){
+                let mut number: String = val.to_string();
+                if self.neg_num{
+                    number.insert(0, '-');
+                }
                 self.stream.push(Token{
                     id: TokenIds::Num,
-                    value: val.to_string(),
+                    value: number,
                 });
             }
             //dont count whitespace
             else if val != &" " && val != &"\t"{
+                // check if the val is equal to a variable name
+                for var in self.vars.iter(){
+                    if val == var{
+                        self.stream.push(Token{
+                            id: TokenIds::VarName,
+                            value: val.to_string(),
+                        });
+                        self.neg_num = false;
+                        continue 'tokenloop;
+
+                    }
+                }
                 self.untokenized+=1;
             }
+            // reset the neg_num flag so that every number doesnt become negative
+            self.neg_num = false;
         }
+        // add a terminator at the end of every file
+        self.stream.push(Token{
+            id: TokenIds::Terminator,
+            value: "".to_string(),
+        });
     }
 }
 
@@ -197,7 +238,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
     for letter in input.chars() {
         match letter {
             // split string at these values plus space
-            ')' | '(' | '\"' | '\n' | '>' | '<'=> {
+            ')' | '(' | '\"' | '\n' | '>' | '<' | '-' | '*' | '+' | '/'=> {
                 //prevent useless empty strings forming
                 if preproccessed.len() > 0{
                     if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
@@ -213,7 +254,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
 
     let mut preproccessed: Vec<&str> = preproccessed.split(' ').collect();
 
-    //remove empty strings so they don't cause problems
+    //replace empty strings so they don't cause problems
     {
         let mut i = 0;
         while i< preproccessed.len(){
@@ -232,6 +273,8 @@ pub fn tokenize(input: String) -> Vec<Token>{
         in_string: false,
         temp: Vec::new(),
         untokenized: 0,
+        neg_num: false,
+        vars: Vec::new(),
     };
     res.match_tokens(&preproccessed);
     return res.stream;
