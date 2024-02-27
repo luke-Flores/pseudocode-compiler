@@ -17,12 +17,14 @@
 */
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum TokenIds{
+    FunctionName,
+    FunctionDef,
     FunctionBeg,
     FunctionEnd,
-    FunctionName,
     Operand,
     ParamSeperator,
-    MonoOperand,
+    ParanBeg,
+    ParanEnd,
     BlockBeg,
     BlockEnd,
     If,
@@ -33,14 +35,13 @@ enum TokenIds{
     Asigment,
     ArrayBeg,
     ArrayEnd,
-    Data,
     VarDec,
     VarName,
     ArrayName,
     For,
     Each,
     In,
-    FunctionDef,
+    Procedure,
     Return,
     StringBeg,
     StringEnd,
@@ -58,12 +59,14 @@ pub struct Token{
 
 struct DevelopingTokens{
     stream: Vec<Token>,
-    // i would off load variables to codegen time but variable declarations needs to happen during
-    // tokenization
+    // i would off load variables and functions to codegen time but variable declarations needs to happen during tokenization
+    // these are  types of String because using &str was a pain
     vars: Vec<String>,
     temp: Vec<String>,
+    funcs: Vec<String>,
     //flags
-    function_parameters: bool,
+    // each element is a level in which a paranthese is nesed, false is a paranthese, true is a function
+    func_para: Vec<bool>,
     in_string: bool,
     untokenized: u16,
     neg_num: bool,
@@ -106,20 +109,33 @@ impl DevelopingTokens{
                 }
             }
             else if val == &"(" {
+                let mut is_func = false;
                 if i != 0{
+                    for func in self.funcs.iter(){
+                        if input[i-1] == func{
+                            is_func = true;
+                            break;
+                        }
+                    }
+                    if is_func{
+                        self.stream.push(Token{
+                            id: TokenIds::FunctionName,
+                            value: input[i-1].to_string(),
+                        });
+                        self.stream.push(Token{
+                            id: TokenIds::FunctionBeg,
+                            value: "(".to_string(),
+                        });
+                        self.func_para.push(true);
+                        self.untokenized-=1;
+                    }
+                }
+                if !is_func{
                     self.stream.push(Token{
-                        id: TokenIds::FunctionName,
-                        value: input[i-1].to_string(),
-                    });
-                    self.stream.push(Token{
-                        id: TokenIds::FunctionBeg,
+                        id: TokenIds::ParanBeg,
                         value: "(".to_string(),
                     });
-                    self.function_parameters = true;
-                    self.untokenized-=1;
-                }
-                else {
-                    panic!("Function called without name, aborting");
+                    self.func_para.push(false);
                 }
             }
             else if val == &"\""{
@@ -131,11 +147,24 @@ impl DevelopingTokens{
             }
 
             else  if val == &")"{
-                self.stream.push(Token{
-                    id: TokenIds::FunctionEnd,
-                    value: ")".to_string(),
-                });
-                self.function_parameters = false;
+                if self.func_para.len() > 0{
+                    if self.func_para[self.func_para.len() -1]{
+                        self.stream.push(Token{
+                            id: TokenIds::FunctionEnd,
+                            value: ")".to_string(),
+                        });
+                    }
+                    else{
+                        self.stream.push(Token{
+                            id: TokenIds::ParanEnd,
+                            value: ")".to_string(),
+                        });
+                    }
+                    self.func_para.pop();
+                }
+                else{
+                    panic!("Paranthese closed without a corresponding opening paranthese");
+                }
             }
             else if val == &"<-"{
                 if i > 0{
@@ -173,7 +202,7 @@ impl DevelopingTokens{
                     continue 'tokenloop;
                 }
             }
-            else if val == &"+" || val == &"*" || val == &"/" || val == &"MOD" || val == &"="{
+            else if val == &"+" || val == &"*" || val == &"/" || val == &"MOD" || val == &"=" || val == &"OR" || val == &"AND" || val == &"NOT"{
                 self.stream.push(Token{
                     id: TokenIds::Operand,
                     value: val.to_string(),
@@ -189,6 +218,22 @@ impl DevelopingTokens{
                         self.skip+=1;
                     },
                     _ => panic!("Expected = after ! but did not get any value or a different value"),
+                }
+            }
+            else if val == &","{
+                if self.func_para.len() > 0{
+                    if self.func_para[self.func_para.len()-1]{
+                        self.stream.push(Token{
+                            id: TokenIds::ParamSeperator,
+                            value: ",".to_string(),
+                        });
+                    }
+                    else {
+                        panic!("Comma appeared while not in a function parameter statement");
+                    }
+                }
+                else {
+                    panic!("comma appeared while not in a function parameter statement");
                 }
             }
             else if val == &">" || val == &"<"{
@@ -212,8 +257,8 @@ impl DevelopingTokens{
                 if self.untokenized != 0{
                     panic!("Failed to tokenize a statement.");
                 }
-                else if self.function_parameters{
-                    panic!("Terminator apeared inside of a function declaration");
+                else if self.func_para.len() > 0{
+                    panic!("Terminator apeared inside of a paranthese statement");
                 }
                 else{
                     self.stream.push(Token{
@@ -246,7 +291,6 @@ impl DevelopingTokens{
 
                     }
                 }
-                println!("{}", val);
                 self.untokenized+=1;
             }
             // reset the neg_num flag so that every number doesnt become negative
@@ -261,7 +305,7 @@ fn preproccess(preproccessed: &mut String, input: String){
     while let Some(letter) = chars.next(){
         match letter {
             // split string at these values plus space
-            ')' | '('| '<' | '\"' | '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!'=> {
+            ')' | '('| '<' | '\"' | '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!' | ','=> {
                 //prevent useless empty strings forming
                 if i > 0{
                     if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
@@ -321,17 +365,15 @@ pub fn tokenize(input: String) -> Vec<Token>{
 
     let mut res = DevelopingTokens{
         stream: Vec::new(),
-        function_parameters: false,
+        func_para: Vec::new(),
         in_string: false,
         temp: Vec::new(),
         untokenized: 0,
         neg_num: false,
         vars: Vec::new(),
+        funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string()],
         skip: 0,
     };
     res.match_tokens(&preproccessed);
     return res.stream;
 }
-
-
-
