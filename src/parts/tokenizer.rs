@@ -108,229 +108,235 @@ impl DevelopingTokens{
                     }
                     self.temp.push(val.to_string());
                 }
+                continue 'tokenloop;
             }
-            else if val == &"(" {
-                let mut is_func = false;
-                if i != 0{
-                    for func in self.funcs.iter(){
-                        if input[i-1] == func{
-                            is_func = true;
-                            break;
+            match val {
+                &"(" => {
+                    let mut is_func = false;
+                    if i != 0{
+                        for func in self.funcs.iter(){
+                            if input[i-1] == func{
+                                is_func = true;
+                                break;
+                            }
+                        }
+                        if is_func{
+                            self.stream.push(Token{
+                                id: TokenIds::FunctionName,
+                                value: input[i-1].to_string(),
+                            });
+                            self.stream.push(Token{
+                                id: TokenIds::FunctionBeg,
+                                value: "(".to_string(),
+                            });
+                            self.func_para.push(true);
+                            self.untokenized-=1;
                         }
                     }
-                    if is_func{
+                    if !is_func{
                         self.stream.push(Token{
-                            id: TokenIds::FunctionName,
+                            id: TokenIds::ParanBeg,
+                            value: "(".to_string(),
+                        });
+                        self.func_para.push(false);
+                    }
+                }
+                &"\"" => {
+                    self.stream.push(Token{
+                        id: TokenIds::StringBeg,
+                        value: "\"".to_string(),
+                    });
+                    self.in_string = true;
+                }
+                &"IF" => {
+                    self.stream.push(Token{
+                        id:TokenIds::If,
+                        value: "IF".to_string(),
+                    });
+                }
+                &"ELSE" => {
+                    self.stream.push(Token{
+                        id: TokenIds::Else,
+                        value: "ELSE".to_string(),
+                    });
+                }
+                &"{" =>{
+                    self.stream.push(Token{
+                        id: TokenIds::BlockBeg,
+                        value: "{".to_string(),
+                    });
+                    self.block_count+=1;
+                }
+                &"}" => {
+                    if self.block_count > 0{
+                        self.stream.push(Token{
+                            id: TokenIds::BlockEnd,
+                            value: "}".to_string(),
+                        });
+                        self.block_count-=1;
+                    }
+                    else{
+                        panic!("`}}` occured without a corresponding `{{`");
+                    }
+                }
+                &")" => {
+                    if self.func_para.len() > 0{
+                        if self.func_para[self.func_para.len() -1]{
+                            self.stream.push(Token{
+                                id: TokenIds::FunctionEnd,
+                                value: ")".to_string(),
+                            });
+                        }
+                        else{
+                            self.stream.push(Token{
+                                id: TokenIds::ParanEnd,
+                                value: ")".to_string(),
+                            });
+                        }
+                        self.func_para.pop();
+                    }
+                    else{
+                        panic!("Paranthese closed without a corresponding opening paranthese");
+                    }
+                }
+                &"<-" => {
+                    if i > 0{
+                        self.stream.push(Token{
+                            id: TokenIds::VarDec,
                             value: input[i-1].to_string(),
                         });
                         self.stream.push(Token{
-                            id: TokenIds::FunctionBeg,
-                            value: "(".to_string(),
+                            id: TokenIds::Asigment,
+                            value: "<-".to_string(),
                         });
-                        self.func_para.push(true);
                         self.untokenized-=1;
+                        self.vars.push(input[i-1].to_string());
+                    }
+                    else {
+                        panic!("<- used without a variable name");
                     }
                 }
-                if !is_func{
-                    self.stream.push(Token{
-                        id: TokenIds::ParanBeg,
-                        value: "(".to_string(),
-                    });
-                    self.func_para.push(false);
-                }
-            }
-            else if val == &"\""{
-                self.stream.push(Token{
-                    id: TokenIds::StringBeg,
-                    value: "\"".to_string(),
-                });
-                self.in_string = true;
-            }
-            else if val == &"IF"{
-                self.stream.push(Token{
-                    id:TokenIds::If,
-                    value: "IF".to_string(),
-                });
-            }
-            else if val == &"ELSE"{
-                self.stream.push(Token{
-                    id: TokenIds::Else,
-                    value: "ELSE".to_string(),
-                });
-            }
-            else if val == &"{"{
-                self.stream.push(Token{
-                    id: TokenIds::BlockBeg,
-                    value: "{".to_string(),
-                });
-                self.block_count+=1;
-            }
-            else if val == &"}"{
-                if self.block_count > 0{
-                    self.stream.push(Token{
-                        id: TokenIds::BlockEnd,
-                        value: "}".to_string(),
-                    });
-                    self.block_count-=1;
-                }
-                else{
-                    panic!("`}}` occured without a corresponding `{{`");
-                }
-            }
-            else  if val == &")"{
-                if self.func_para.len() > 0{
-                    if self.func_para[self.func_para.len() -1]{
-                        self.stream.push(Token{
-                            id: TokenIds::FunctionEnd,
-                            value: ")".to_string(),
-                        });
-                    }
-                    else{
-                        self.stream.push(Token{
-                            id: TokenIds::ParanEnd,
-                            value: ")".to_string(),
-                        });
-                    }
-                    self.func_para.pop();
-                }
-                else{
-                    panic!("Paranthese closed without a corresponding opening paranthese");
-                }
-            }
-            else if val == &"<-"{
-                if i > 0{
-                    self.stream.push(Token{
-                        id: TokenIds::VarDec,
-                        value: input[i-1].to_string(),
-                    });
-                    self.stream.push(Token{
-                        id: TokenIds::Asigment,
-                        value: "<-".to_string(),
-                    });
-                    self.untokenized-=1;
-                    self.vars.push(input[i-1].to_string());
-                }
-                else {
-                    panic!("<- used without a variable name");
-                }
-            }
-            else if val == &"-"{
-                if self.stream.len() > 0{
-                    let prev_token = self.stream[self.stream.len()-1].id;
-                    if prev_token == TokenIds::Num || prev_token == TokenIds::VarName{
-                        self.stream.push(Token{
-                            id: TokenIds::Operand,
-                            value: "-".to_string(),
-                        });
+                &"-" =>{
+                    if self.stream.len() > 0{
+                        let prev_token = self.stream[self.stream.len()-1].id;
+                        if prev_token == TokenIds::Num || prev_token == TokenIds::VarName{
+                            self.stream.push(Token{
+                                id: TokenIds::Operand,
+                                value: "-".to_string(),
+                            });
+                        }
+                        else{
+                            self.neg_num = true;
+                            continue 'tokenloop;
+                        }
                     }
                     else{
                         self.neg_num = true;
                         continue 'tokenloop;
                     }
                 }
-                else{
-                    self.neg_num = true;
-                    continue 'tokenloop;
+                &"+" | &"*" | &"/" | &"MOD" | &"=" |  &"OR" | &"AND" |  &"NOT" => {
+                    self.stream.push(Token{
+                        id: TokenIds::Operand,
+                        value: val.to_string(),
+                    });
                 }
-            }
-            else if val == &"+" || val == &"*" || val == &"/" || val == &"MOD" || val == &"=" || val == &"OR" || val == &"AND" || val == &"NOT"{
-                self.stream.push(Token{
-                    id: TokenIds::Operand,
-                    value: val.to_string(),
-                });
-            }
-            else if val == &"!" {
-                match input.iter().nth(i+1){
-                    Some(&"=") =>{
-                        self.stream.push(Token{
-                            id: TokenIds::Operand,
-                            value: "!=".to_string(),
-                        });
-                        self.skip+=1;
-                    },
-                    _ => panic!("Expected = after ! but did not get any value or a different value"),
-                }
-            }
-            else if val == &","{
-                if self.func_para.len() > 0{
-                    if self.func_para[self.func_para.len()-1]{
-                        self.stream.push(Token{
-                            id: TokenIds::ParamSeperator,
-                            value: ",".to_string(),
-                        });
-                    }
-                    else {
-                        panic!("Comma appeared while not in a function parameter statement");
+                &"!" => {
+                    match input.iter().nth(i+1){
+                        Some(&"=") =>{
+                            self.stream.push(Token{
+                                id: TokenIds::Operand,
+                                value: "!=".to_string(),
+                            });
+                            self.skip+=1;
+                        },
+                        _ => panic!("Expected = after ! but did not get any value or a different value"),
                     }
                 }
-                else {
-                    panic!("comma appeared while not in a function parameter statement");
-                }
-            }
-            else if val == &">" || val == &"<"{
-                match input.iter().nth(i+1){
-                    Some(&"=") =>{
-                        self.stream.push(Token{
-                            id: TokenIds::Operand,
-                            value: format!("{}=",val),
-                        });
-                        self.skip+=1;
-                    },
-                    _ => {
-                        self.stream.push(Token{
-                            id: TokenIds::Operand,
-                            value: val.to_string(),
-                        });
-                    },
-                }
-            }
-            else if val == &"\n"{
-                if self.untokenized != 0{
-                    panic!("Failed to tokenize a statement.");
-                }
-                else if self.func_para.len() > 0{
-                    panic!("Terminator apeared inside of a paranthese statement");
-                }
-                else{
-                    // dont't push a terminator if the previous token was a terminator or if its
-                    // the first element just so its easier down the road
-                    if self.stream.len() > 0{
-                        if self.stream[self.stream.len()-1].id != TokenIds::Terminator{
-                             self.stream.push(Token{
-                                id: TokenIds::Terminator,
-                                value: "\n".to_string(),
+                &"," => {
+                    if self.func_para.len() > 0{
+                        if self.func_para[self.func_para.len()-1]{
+                            self.stream.push(Token{
+                                id: TokenIds::ParamSeperator,
+                                value: ",".to_string(),
                             });
                         }
+                        else {
+                            panic!("Comma appeared while not in a function parameter statement");
+                        }
                     }
+                    else {
+                        panic!("comma appeared while not in a function parameter statement");
+                    }
+                }
+                &">" | &"<" => {
+                    match input.iter().nth(i+1){
+                        Some(&"=") =>{
+                            self.stream.push(Token{
+                                id: TokenIds::Operand,
+                                value: format!("{}=",val),
+                            });
+                            self.skip+=1;
+                        },
+                        _ => {
+                            self.stream.push(Token{
+                                id: TokenIds::Operand,
+                                value: val.to_string(),
+                            });
+                        },
+                    }
+                }
+                &"\n" => {
+                    if self.untokenized != 0{
+                        panic!("Failed to tokenize a statement.");
+                    }
+                    else if self.func_para.len() > 0{
+                        panic!("Terminator apeared inside of a paranthese statement");
+                    }
+                    else{
+                        // dont't push a terminator if the previous token was a terminator or if its
+                        // the first element just so its easier down the road
+                        if self.stream.len() > 0{
+                            if self.stream[self.stream.len()-1].id != TokenIds::Terminator{
+                                self.stream.push(Token{
+                                    id: TokenIds::Terminator,
+                                    value: "\n".to_string(),
+                                });
+                            }
+                        }
 
+                    }
                 }
-            }
-            else if val.parse::<f64>().is_ok(){
-                let mut number: String = val.to_string();
-                if self.neg_num{
-                    number.insert(0, '-');
-                }
-                self.stream.push(Token{
-                    id: TokenIds::Num,
-                    value: number,
-                });
-            }
-            //dont count whitespace
-            else if val != &" " && val != &"\t"{
-                // check if the val is equal to a variable name
-                for var in self.vars.iter(){
-                    if val == var{
-                        self.stream.push(Token{
-                            id: TokenIds::VarName,
-                            value: val.to_string(),
-                        });
-                        self.neg_num = false;
+                _ =>{
+                    //dont count white space
+                    if val == &" " || val == &"\t"{
                         continue 'tokenloop;
-
                     }
+                    else if val.parse::<f64>().is_ok(){
+                        let mut number: String = val.to_string();
+                        if self.neg_num{
+                            number.insert(0, '-');
+                        }
+                        self.stream.push(Token{
+                            id: TokenIds::Num,
+                            value: number,
+                        });
+                        continue 'tokenloop;
+                    }
+                    // check if the val is equal to a variable name
+                    for var in self.vars.iter(){
+                        if val == var{
+                            self.stream.push(Token{
+                                id: TokenIds::VarName,
+                                value: val.to_string(),
+                            });
+                            self.neg_num = false;
+                            continue 'tokenloop;
+
+                        }
+                    }
+                    self.untokenized+=1;
                 }
-                eprintln!("{}", val);
-                self.untokenized+=1;
             }
             // reset the neg_num flag so that every number doesnt become negative
             self.neg_num = false;
