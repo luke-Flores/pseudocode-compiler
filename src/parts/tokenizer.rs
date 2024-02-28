@@ -71,6 +71,7 @@ struct DevelopingTokens{
     untokenized: u16,
     neg_num: bool,
     skip: u8,
+    block_count: u16,
 }
 
 impl DevelopingTokens{
@@ -145,7 +146,37 @@ impl DevelopingTokens{
                 });
                 self.in_string = true;
             }
-
+            else if val == &"IF"{
+                self.stream.push(Token{
+                    id:TokenIds::If,
+                    value: "IF".to_string(),
+                });
+            }
+            else if val == &"ELSE"{
+                self.stream.push(Token{
+                    id: TokenIds::Else,
+                    value: "ELSE".to_string(),
+                });
+            }
+            else if val == &"{"{
+                self.stream.push(Token{
+                    id: TokenIds::BlockBeg,
+                    value: "{".to_string(),
+                });
+                self.block_count+=1;
+            }
+            else if val == &"}"{
+                if self.block_count > 0{
+                    self.stream.push(Token{
+                        id: TokenIds::BlockEnd,
+                        value: "}".to_string(),
+                    });
+                    self.block_count-=1;
+                }
+                else{
+                    panic!("`}}` occured without a corresponding `{{`");
+                }
+            }
             else  if val == &")"{
                 if self.func_para.len() > 0{
                     if self.func_para[self.func_para.len() -1]{
@@ -261,10 +292,17 @@ impl DevelopingTokens{
                     panic!("Terminator apeared inside of a paranthese statement");
                 }
                 else{
-                    self.stream.push(Token{
-                        id: TokenIds::Terminator,
-                        value: "\n".to_string(),
-                    });
+                    // dont't push a terminator if the previous token was a terminator or if its
+                    // the first element just so its easier down the road
+                    if self.stream.len() > 0{
+                        if self.stream[self.stream.len()-1].id != TokenIds::Terminator{
+                             self.stream.push(Token{
+                                id: TokenIds::Terminator,
+                                value: "\n".to_string(),
+                            });
+                        }
+                    }
+
                 }
             }
             else if val.parse::<f64>().is_ok(){
@@ -291,10 +329,14 @@ impl DevelopingTokens{
 
                     }
                 }
+                eprintln!("{}", val);
                 self.untokenized+=1;
             }
             // reset the neg_num flag so that every number doesnt become negative
             self.neg_num = false;
+        }
+        if self.block_count > 0{
+            panic!("File ended but there are still unclosed block openers({{)");
         }
     }
 }
@@ -305,7 +347,7 @@ fn preproccess(preproccessed: &mut String, input: String){
     while let Some(letter) = chars.next(){
         match letter {
             // split string at these values plus space
-            ')' | '('| '<' | '\"' | '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!' | ','=> {
+            ')' | '('| '<' | '\"' | '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!' | ',' | '}' | '{'=> {
                 //prevent useless empty strings forming
                 if i > 0{
                     if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
@@ -373,6 +415,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
         vars: Vec::new(),
         funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string()],
         skip: 0,
+        block_count: 0,
     };
     res.match_tokens(&preproccessed);
     return res.stream;

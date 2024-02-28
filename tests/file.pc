@@ -1,2 +1,12 @@
-DISPLAY(1*(1+2))
-RANDOM((1+1)/2, 4*(-3*8))
+
+IF 1 > 0
+
+{
+
+    DISPLAY("HELLO WORLD")
+
+
+}
+ELSE{
+    DISPLAY("GOODYBYE WORLD")
+}
