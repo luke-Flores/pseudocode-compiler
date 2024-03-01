@@ -29,7 +29,6 @@ enum TokenIds{
     BlockEnd,
     If,
     Else,
-    Repeat,
     Times,
     Until,
     Asigment,
@@ -70,6 +69,7 @@ struct DevelopingTokens{
     in_string: bool,
     untokenized: u16,
     neg_num: bool,
+    arr_count: u16,
     skip: u8,
     block_count: u16,
 }
@@ -141,6 +141,25 @@ impl DevelopingTokens{
                         self.func_para.push(false);
                     }
                 }
+                &"[" => {
+                    self.stream.push(Token{
+                        id: TokenIds::ArrayBeg,
+                        value: "[".to_string(),
+                    });
+                    self.arr_count+=1;
+                }
+                &"]" => {
+                    if self.arr_count > 0{
+                        self.stream.push(Token{
+                            id: TokenIds::ArrayEnd,
+                            value: "]".to_string(),
+                        });
+                        self.arr_count-=1;
+                    }
+                    else{
+                        panic!("array terminator appeared but no subsequent array opener followed");
+                    }
+                }
                 &"\"" => {
                     self.stream.push(Token{
                         id: TokenIds::StringBeg,
@@ -159,6 +178,41 @@ impl DevelopingTokens{
                         id: TokenIds::Else,
                         value: "ELSE".to_string(),
                     });
+                }
+                &"REPEAT" => {
+                    let mut ok = false;
+                    if input.len() > i+2{
+                        if input[i+1].parse::<f64>().is_ok(){
+                            if input[i+2] == "TIMES"{
+                                self.stream.push(Token{
+                                    id: TokenIds::Times,
+                                    value: "TIMES".to_string(),
+                                });
+                                self.stream.push(Token{
+                                    id: TokenIds::Num,
+                                    value: input[i+1].to_string(),
+                                });
+                                ok = true;
+                                self.skip+=2;
+                            }
+                            else{
+                                panic!("REPEAT was followed by a number but TIMES did not follow");
+                            }
+                        }
+                    }
+                    if input.len() > i+1{
+                        if input[i+1] == "UNTIL"{
+                            self.stream.push(Token{
+                                id: TokenIds::Until,
+                                value: "UNTIL".to_string(),
+                            });
+                            self.skip+=1;
+                            ok = true;
+                        }
+                    }
+                    if !ok{
+                        panic!("REPEAT found but was followed by neither a number or the keyword UNTIL");
+                    }
                 }
                 &"{" =>{
                     self.stream.push(Token{
@@ -293,6 +347,9 @@ impl DevelopingTokens{
                     else if self.func_para.len() > 0{
                         panic!("Terminator apeared inside of a paranthese statement");
                     }
+                    else if self.arr_count > 0{
+                        panic!("a terminator appeared but the line contains unclosed array(s)");
+                    }
                     else{
                         // dont't push a terminator if the previous token was a terminator or if its
                         // the first element just so its easier down the road
@@ -312,6 +369,7 @@ impl DevelopingTokens{
                     if val == &" " || val == &"\t"{
                         continue 'tokenloop;
                     }
+                    //check if its a number
                     else if val.parse::<f64>().is_ok(){
                         let mut number: String = val.to_string();
                         if self.neg_num{
@@ -335,6 +393,7 @@ impl DevelopingTokens{
 
                         }
                     }
+                    println!("{}", val);
                     self.untokenized+=1;
                 }
             }
@@ -353,7 +412,7 @@ fn preproccess(preproccessed: &mut String, input: String){
     while let Some(letter) = chars.next(){
         match letter {
             // split string at these values plus space
-            ')' | '('| '<' | '\"' | '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!' | ',' | '}' | '{'=> {
+            ')' | '('| '<' | '\"' | '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!' | ',' | '}' | '{' | '[' | ']'=> {
                 //prevent useless empty strings forming
                 if i > 0{
                     if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
@@ -422,6 +481,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
         funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string()],
         skip: 0,
         block_count: 0,
+        arr_count: 0,
     };
     res.match_tokens(&preproccessed);
     return res.stream;

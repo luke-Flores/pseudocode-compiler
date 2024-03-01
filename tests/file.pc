@@ -1,12 +1,7 @@
-
-IF -1 >= 5*-6
-
-{
-
-    DISPLAY("HELLO WORLD")
-
-
+REPEAT 6 TIMES{
+    arr <- []
 }
-ELSE{
-    DISPLAY("GOODYBYE WORLD")
+condition <- 01
+REPEAT UNTIL condition{
+    t <- []
 }
