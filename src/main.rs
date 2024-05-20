@@ -1,5 +1,5 @@
 /*
-    CBPCC - an implementation of the CSP pseudocode language
+    pseudocode compiler - an implementation of the CSP pseudocode language
     Copyright (C) 2024  Luke Flores
 
     This program is free software: you can redistribute it and/or modify
