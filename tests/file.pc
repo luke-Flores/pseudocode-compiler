@@ -1,5 +1,5 @@
 REPEAT 6 TIMES{
-    arr <- []
+    arr <- [[1,2,3],[4,5,6]]
 }
 condition <- 01
 REPEAT UNTIL condition{
