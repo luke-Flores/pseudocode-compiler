@@ -34,9 +34,11 @@ enum TokenIds{
     Asigment,
     ArrayBeg,
     ArrayEnd,
+    IndBeg,
+    IndEnd,
+    ElemSeperator,
     VarDec,
     VarName,
-    ArrayName,
     For,
     Each,
     In,
@@ -56,6 +58,13 @@ pub struct Token{
     value: String,
 }
 
+enum ParaBracketValues{
+    ooo,
+    function,
+    array_def,
+    array_index,
+}
+
 struct DevelopingTokens{
     stream: Vec<Token>,
     // i would off load variables and functions to codegen time but variable declarations needs to happen during tokenization
@@ -64,12 +73,11 @@ struct DevelopingTokens{
     temp: Vec<String>,
     funcs: Vec<String>,
     //flags
-    // each element is a level in which a paranthese is nesed, false is a paranthese, true is a function
-    func_para: Vec<bool>,
+    //each element represents a paranthese or bracket and its corresponding value
+    bracket_para: Vec<ParaBracketValues>,
     in_string: bool,
     untokenized: u16,
     neg_num: bool,
-    arr_count: u16,
     skip: u8,
     block_count: u16,
 }
@@ -129,7 +137,7 @@ impl DevelopingTokens{
                                 id: TokenIds::FunctionBeg,
                                 value: "(".to_string(),
                             });
-                            self.func_para.push(true);
+                            self.bracket_para.push(ParaBracketValues::function);
                             self.untokenized-=1;
                         }
                     }
@@ -138,26 +146,53 @@ impl DevelopingTokens{
                             id: TokenIds::ParanBeg,
                             value: "(".to_string(),
                         });
-                        self.func_para.push(false);
+                        self.bracket_para.push(ParaBracketValues::ooo);
                     }
                 }
                 &"[" => {
-                    self.stream.push(Token{
-                        id: TokenIds::ArrayBeg,
-                        value: "[".to_string(),
-                    });
-                    self.arr_count+=1;
-                }
-                &"]" => {
-                    if self.arr_count > 0{
+                    let mut is_index = false;
+                    if self.stream.len() > 0{
+                        if self.stream[self.stream.len()-1].id == TokenIds::VarName{
+                            is_index = true;
+                        }
+                    }
+                    if is_index{
                         self.stream.push(Token{
-                            id: TokenIds::ArrayEnd,
-                            value: "]".to_string(),
+                            id: TokenIds::IndBeg,
+                            value: "[".to_string(),
                         });
-                        self.arr_count-=1;
+                        self.bracket_para.push(ParaBracketValues::array_index);
                     }
                     else{
-                        panic!("array terminator appeared but no subsequent array opener followed");
+                        self.stream.push(Token{
+                            id: TokenIds::ArrayBeg,
+                            value: "[".to_string(),
+                        });
+                        self.bracket_para.push(ParaBracketValues::array_def);
+                    }
+                }
+                &"]" => {
+                    if self.bracket_para.len() > 0{
+                        match self.bracket_para[self.bracket_para.len()-1]{
+                            ParaBracketValues::array_def => {
+                                self.stream.push(Token{
+                                    id: TokenIds::ArrayEnd,
+                                    value: "]".to_string(),
+                                });
+                                self.bracket_para.pop();
+                            }
+                            ParaBracketValues::array_index => {
+                                self.stream.push(Token{
+                                    id: TokenIds::IndEnd,
+                                    value: "]".to_string(),
+                                });
+                                self.bracket_para.pop();
+                            }
+                            _ => panic!("] appeared while an unclosed paranthese is still present"),
+                        }
+                    }
+                    else{
+                        panic!("] appeared without a corresponding [ to go with it");
                     }
                 }
                 &"\"" => {
@@ -234,20 +269,24 @@ impl DevelopingTokens{
                     }
                 }
                 &")" => {
-                    if self.func_para.len() > 0{
-                        if self.func_para[self.func_para.len() -1]{
-                            self.stream.push(Token{
-                                id: TokenIds::FunctionEnd,
-                                value: ")".to_string(),
-                            });
+                    if self.bracket_para.len() > 0{
+                        match self.bracket_para[self.bracket_para.len() -1]{
+                            ParaBracketValues::ooo =>{
+                                self.stream.push(Token{
+                                    id: TokenIds::ParanEnd,
+                                    value: ")".to_string(),
+                                });
+                                self.bracket_para.pop();
+                            },
+                            ParaBracketValues::function =>{
+                                self.stream.push(Token{
+                                    id: TokenIds::FunctionEnd,
+                                    value: ")".to_string(),
+                                });
+                                self.bracket_para.pop();
+                            },
+                            _ => panic!(") occured in side of an unclosed array or array index"),
                         }
-                        else{
-                            self.stream.push(Token{
-                                id: TokenIds::ParanEnd,
-                                value: ")".to_string(),
-                            });
-                        }
-                        self.func_para.pop();
                     }
                     else{
                         panic!("Paranthese closed without a corresponding opening paranthese");
@@ -308,15 +347,23 @@ impl DevelopingTokens{
                     }
                 }
                 &"," => {
-                    if self.func_para.len() > 0{
-                        if self.func_para[self.func_para.len()-1]{
-                            self.stream.push(Token{
-                                id: TokenIds::ParamSeperator,
-                                value: ",".to_string(),
-                            });
-                        }
-                        else {
-                            panic!("Comma appeared while not in a function parameter statement");
+                    if self.bracket_para.len() > 0{
+                        match self.bracket_para[self.bracket_para.len()-1]{
+                            ParaBracketValues::function => {
+                                self.stream.push(Token{
+                                    id: TokenIds::ParamSeperator,
+                                    value: ",".to_string(),
+                                });
+                            },
+                            ParaBracketValues::array_def => {
+                                self.stream.push(Token{
+                                    id: TokenIds::ElemSeperator,
+                                    value: ",".to_string(),
+                                });
+                            },
+                            _ => {
+                                panic!("Comma appeared while not in a function parameter statement");
+                            },
                         }
                     }
                     else {
@@ -344,11 +391,8 @@ impl DevelopingTokens{
                     if self.untokenized != 0{
                         panic!("Failed to tokenize a statement.");
                     }
-                    else if self.func_para.len() > 0{
-                        panic!("Terminator apeared inside of a paranthese statement");
-                    }
-                    else if self.arr_count > 0{
-                        panic!("a terminator appeared but the line contains unclosed array(s)");
+                    else if self.bracket_para.len() > 0{
+                        panic!("Terminator apeared inside of a paranthese or bracket statement");
                     }
                     else{
                         // dont't push a terminator if the previous token was a terminator or if its
@@ -393,7 +437,6 @@ impl DevelopingTokens{
 
                         }
                     }
-                    println!("{}", val);
                     self.untokenized+=1;
                 }
             }
@@ -472,16 +515,15 @@ pub fn tokenize(input: String) -> Vec<Token>{
 
     let mut res = DevelopingTokens{
         stream: Vec::new(),
-        func_para: Vec::new(),
+        bracket_para: Vec::new(),
         in_string: false,
         temp: Vec::new(),
         untokenized: 0,
         neg_num: false,
         vars: Vec::new(),
-        funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string()],
+        funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string(), "INSERT".to_string()],
         skip: 0,
         block_count: 0,
-        arr_count: 0,
     };
     res.match_tokens(&preproccessed);
     return res.stream;
