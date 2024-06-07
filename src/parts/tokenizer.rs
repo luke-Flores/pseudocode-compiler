@@ -40,8 +40,7 @@ enum TokenIds{
     VarDec,
     VarName,
     For,
-    Each,
-    In,
+    ForVar,
     Procedure,
     Return,
     StringBeg,
@@ -213,6 +212,33 @@ impl DevelopingTokens{
                         id: TokenIds::Else,
                         value: "ELSE".to_string(),
                     });
+                }
+                &"FOR" => {
+                    //4th string won't be checked here as it could be multiple things but something
+                    //must be present so it is required
+                    if input.len() > i+4{
+                        self.skip+=3;
+                        if input[i+1] == "EACH"{
+                            self.stream.push(Token{
+                                id: TokenIds::For,
+                                value: "FOR EACH".to_string(),
+                            });
+                            self.stream.push(Token{
+                                id: TokenIds::ForVar,
+                                value: input[i+2].to_string(),
+                            });
+                            self.vars.push(input[i+2].to_string());
+                            if input[i+3] != "IN"{
+                                panic!("FOR EACH statement appeared without IN following");
+                            }
+                        }
+                        else{
+                            panic!("FOR appeared without a subsequent EACH following");
+                        }
+                    }
+                    else{
+                        panic!("FOR appeared without enough strings after");
+                    }
                 }
                 &"REPEAT" => {
                     let mut ok = false;
