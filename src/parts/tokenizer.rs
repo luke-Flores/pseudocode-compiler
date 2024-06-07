@@ -18,7 +18,6 @@
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum TokenIds{
     FunctionName,
-    FunctionDef,
     FunctionBeg,
     FunctionEnd,
     Operand,
@@ -42,6 +41,9 @@ enum TokenIds{
     For,
     ForVar,
     Procedure,
+    ProcBeg,
+    ProcEnd,
+    ParamName,
     Return,
     StringBeg,
     StringEnd,
@@ -74,6 +76,7 @@ struct DevelopingTokens{
     //flags
     //each element represents a paranthese or bracket and its corresponding value
     bracket_para: Vec<ParaBracketValues>,
+    in_proc: bool,
     in_string: bool,
     untokenized: u16,
     neg_num: bool,
@@ -114,6 +117,39 @@ impl DevelopingTokens{
                         self.temp.push(" ".to_string());
                     }
                     self.temp.push(val.to_string());
+                }
+                continue 'tokenloop;
+            }
+            else if self.in_proc{
+                if val == &","{
+                    if self.stream[self.stream.len()-2].id == TokenIds::ParamName{
+                        self.stream.push(Token{
+                            id: TokenIds::ElemSeperator,
+                            value: ",".to_string(),
+                        });
+                    }
+                    else {
+                        panic!("\',\' appeared in a procedure defintion but was not precceeded by a parameter variable name");
+                    }
+                }
+                else if val == &")"{
+                    if self.stream[self.stream.len()-1].id != TokenIds::ElemSeperator{
+                        self.stream.push(Token{
+                            id: TokenIds::ProcEnd,
+                            value: ")".to_string(),
+                        });
+                        self.in_proc = false;
+                    }
+                    else{
+                        panic!("\',\' appeared but only a closing statement followed it after");
+                    }
+                }
+                else {
+                    self.stream.push(Token{
+                        id: TokenIds::ParamName,
+                        value: val.to_string(),
+                    });
+                    self.vars.push(val.to_string())
                 }
                 continue 'tokenloop;
             }
@@ -201,9 +237,24 @@ impl DevelopingTokens{
                     });
                     self.in_string = true;
                 }
+                &"PROCEDURE" => {
+                    if input.len() > i+2{
+                        self.stream.push(Token{
+                            id: TokenIds::Procedure,
+                            value: input[i+1].to_string(),
+                        });
+                        self.funcs.push(input[i+1].to_string());
+                        self.stream.push(Token{
+                            id: TokenIds::ProcBeg,
+                            value: "(".to_string(),
+                        });
+                        self.in_proc = true;
+                        self.skip+=2
+                    }
+                }
                 &"IF" => {
                     self.stream.push(Token{
-                        id:TokenIds::If,
+                        id: TokenIds::If,
                         value: "IF".to_string(),
                     });
                 }
@@ -415,6 +466,7 @@ impl DevelopingTokens{
                 }
                 &"\n" => {
                     if self.untokenized != 0{
+                        println!("{:?}", self.stream);
                         panic!("Failed to tokenize a statement.");
                     }
                     else if self.bracket_para.len() > 0{
@@ -543,6 +595,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
         stream: Vec::new(),
         bracket_para: Vec::new(),
         in_string: false,
+        in_proc: false,
         temp: Vec::new(),
         untokenized: 0,
         neg_num: false,
