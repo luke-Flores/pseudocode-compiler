@@ -152,7 +152,7 @@ impl DevelopingTokens{
                 &"[" => {
                     let mut is_index = false;
                     if self.stream.len() > 0{
-                        if self.stream[self.stream.len()-1].id == TokenIds::VarName{
+                        if self.stream[self.stream.len()-1].id == TokenIds::VarName || self.stream[self.stream.len()-1].id == TokenIds::IndEnd{
                             is_index = true;
                         }
                     }
