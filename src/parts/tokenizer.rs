@@ -49,6 +49,7 @@ enum TokenIds{
     StringEnd,
     Stringval,
     Terminator,
+    Bool,
     Num,
 }
 
@@ -113,8 +114,10 @@ impl DevelopingTokens{
                     self.temp = Vec::new();
                 }
                 else{
-                    if self.temp.len() != 0 && self.temp[self.temp.len() -1] != " "{
-                        self.temp.push(" ".to_string());
+                    if self.temp.len() != 0 {
+                        if self.temp[self.temp.len() -1] != " "{
+                            self.temp.push(" ".to_string());
+                        }
                     }
                     self.temp.push(val.to_string());
                 }
@@ -122,7 +125,8 @@ impl DevelopingTokens{
             }
             else if self.in_proc{
                 if val == &","{
-                    if self.stream[self.stream.len()-2].id == TokenIds::ParamName{
+                    //There is guarenteed a Procedure token and a procbeg token before
+                    if self.stream[self.stream.len()-1].id == TokenIds::ParamName{
                         self.stream.push(Token{
                             id: TokenIds::ElemSeperator,
                             value: ",".to_string(),
@@ -133,6 +137,7 @@ impl DevelopingTokens{
                     }
                 }
                 else if val == &")"{
+                    //guarenteed a token before it like procbeg
                     if self.stream[self.stream.len()-1].id != TokenIds::ElemSeperator{
                         self.stream.push(Token{
                             id: TokenIds::ProcEnd,
@@ -156,7 +161,7 @@ impl DevelopingTokens{
             match val {
                 &"(" => {
                     let mut is_func = false;
-                    if i != 0{
+                    if i > 0{
                         for func in self.funcs.iter(){
                             if input[i-1] == func{
                                 is_func = true;
@@ -166,6 +171,7 @@ impl DevelopingTokens{
                         if is_func{
                             self.stream.push(Token{
                                 id: TokenIds::FunctionName,
+                                //already checked that i is greater than 0
                                 value: input[i-1].to_string(),
                             });
                             self.stream.push(Token{
@@ -173,6 +179,7 @@ impl DevelopingTokens{
                                 value: "(".to_string(),
                             });
                             self.bracket_para.push(ParaBracketValues::function);
+                            //an untokenized function statement should have appeared
                             self.untokenized-=1;
                         }
                     }
@@ -205,6 +212,18 @@ impl DevelopingTokens{
                         });
                         self.bracket_para.push(ParaBracketValues::array_def);
                     }
+                }
+                &"true" => {
+                    self.stream.push(Token{
+                        id: TokenIds::Bool,
+                        value: "true".to_string(),
+                    });
+                }
+                &"false" => {
+                    self.stream.push(Token{
+                        id: TokenIds::Bool,
+                        value: "false".to_string(),
+                    });
                 }
                 &"]" => {
                     if self.bracket_para.len() > 0{
@@ -252,6 +271,12 @@ impl DevelopingTokens{
                         self.skip+=2
                     }
                 }
+                &"RETURN" => {
+                    self.stream.push(Token{
+                        id: TokenIds::Return,
+                        value: "RETURN".to_string(),
+                    });
+                }
                 &"IF" => {
                     self.stream.push(Token{
                         id: TokenIds::If,
@@ -294,22 +319,32 @@ impl DevelopingTokens{
                 &"REPEAT" => {
                     let mut ok = false;
                     if input.len() > i+2{
-                        if input[i+1].parse::<f64>().is_ok(){
-                            if input[i+2] == "TIMES"{
-                                self.stream.push(Token{
-                                    id: TokenIds::Times,
-                                    value: "TIMES".to_string(),
-                                });
-                                self.stream.push(Token{
-                                    id: TokenIds::Num,
-                                    value: input[i+1].to_string(),
-                                });
-                                ok = true;
-                                self.skip+=2;
+                        if input[i+2] == "TIMES"{
+                            let mut times_ok = false;
+                            let num_times = input[i+1];
+
+                            if num_times.parse::<f64>().is_ok(){
+                                times_ok = true;
                             }
-                            else{
-                                panic!("REPEAT was followed by a number but TIMES did not follow");
+                            'varLoop : for varname in self.vars.iter(){
+                                if num_times == varname{
+                                    times_ok = true;
+                                    break 'varLoop;
+                                }
                             }
+                            if !times_ok{
+                                panic!("REPEAT n TIMES statement occured but n isn\'t a number or variable");
+                            }
+                            self.stream.push(Token{
+                                id: TokenIds::Times,
+                                value: "TIMES".to_string(),
+                            });
+                            self.stream.push(Token{
+                                id: TokenIds::Num,
+                                value: input[i+1].to_string(),
+                            });
+                            ok = true;
+                            self.skip+=2;
                         }
                     }
                     if input.len() > i+1{
@@ -379,6 +414,7 @@ impl DevelopingTokens{
                             id: TokenIds::Asigment,
                             value: "<-".to_string(),
                         });
+                        //The previous statement should have been untokenized
                         self.untokenized-=1;
                         self.vars.push(input[i-1].to_string());
                     }
@@ -504,17 +540,21 @@ impl DevelopingTokens{
                         continue 'tokenloop;
                     }
                     // check if the val is equal to a variable name
-                    for var in self.vars.iter(){
-                        if val == var{
-                            self.stream.push(Token{
-                                id: TokenIds::VarName,
-                                value: val.to_string(),
-                            });
-                            self.neg_num = false;
-                            continue 'tokenloop;
-
+                    if input.len() > i+1{
+                        if input[i+1] != "<-"{
+                            for var in self.vars.iter(){
+                                if val == var{
+                                    self.stream.push(Token{
+                                        id: TokenIds::VarName,
+                                        value: val.to_string(),
+                                    });
+                                    self.neg_num = false;
+                                    continue 'tokenloop;
+                                }
+                            }
                         }
                     }
+
                     self.untokenized+=1;
                 }
             }
@@ -600,7 +640,7 @@ pub fn tokenize(input: String) -> Vec<Token>{
         untokenized: 0,
         neg_num: false,
         vars: Vec::new(),
-        funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string(), "INSERT".to_string()],
+        funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string(), "INSERT".to_string(), "REMOVE".to_string(), "APPEND".to_string(), "LENGTH".to_string()],
         skip: 0,
         block_count: 0,
     };

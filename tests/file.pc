@@ -1,5 +1,51 @@
-arr <- [[1,2],[3,4]]
-FOR EACH ls IN arr{
-    DISPLAY(ls)
+a <- INPUT()
+a <- 5
+DISPLAY(a)
+a <- INPUT()
+b <- 3
+a+b
+a-b
+a*b
+a/b
+a MOD b
+RANDOM(a, b)
+a = b
+a != b
+a > b
+a < b
+a>=b
+a<= b
+condition1 <- false
+condition2 <- true
+NOT condition1
+condition1 AND condition2
+condition2 OR condition1
+IF(condition1){
+    DISPLAY(condition2)
 }
+IF(condition2){
+    DISPLAY(condition2)
+}
+ELSE{
+    DISPLAY(condition1)
+}
+REPEAT a TIMES{
+    DISPLAY(b)
+}
+aList <- [5, 3, 2, 9]
+aList <- []
+bList <- aList
+aList[1]
+x <- bList[2]
+INSERT(aList, 2, 5)
+APPEND(aList, 3)
+REMOVE(aList, 2)
+LENGTH(bList)
+FOR EACH item IN aList{
+    DISPLAY(item)
+}
+PROCEDURE procName(parameter1, parameter2){
+    RETURN parameter1 +parameter2
+}
+RETURN a
 
