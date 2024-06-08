@@ -61,10 +61,10 @@ pub struct Token{
 }
 
 enum ParaBracketValues{
-    ooo,
-    function,
-    array_def,
-    array_index,
+    OOO,
+    Function,
+    ArrayDef,
+    ArrayIndex,
 }
 
 struct DevelopingTokens{
@@ -178,7 +178,7 @@ impl DevelopingTokens{
                                 id: TokenIds::FunctionBeg,
                                 value: "(".to_string(),
                             });
-                            self.bracket_para.push(ParaBracketValues::function);
+                            self.bracket_para.push(ParaBracketValues::Function);
                             //an untokenized function statement should have appeared
                             self.untokenized-=1;
                         }
@@ -188,7 +188,7 @@ impl DevelopingTokens{
                             id: TokenIds::ParanBeg,
                             value: "(".to_string(),
                         });
-                        self.bracket_para.push(ParaBracketValues::ooo);
+                        self.bracket_para.push(ParaBracketValues::OOO);
                     }
                 }
                 &"[" => {
@@ -203,14 +203,14 @@ impl DevelopingTokens{
                             id: TokenIds::IndBeg,
                             value: "[".to_string(),
                         });
-                        self.bracket_para.push(ParaBracketValues::array_index);
+                        self.bracket_para.push(ParaBracketValues::ArrayIndex);
                     }
                     else{
                         self.stream.push(Token{
                             id: TokenIds::ArrayBeg,
                             value: "[".to_string(),
                         });
-                        self.bracket_para.push(ParaBracketValues::array_def);
+                        self.bracket_para.push(ParaBracketValues::ArrayDef);
                     }
                 }
                 &"true" => {
@@ -228,14 +228,14 @@ impl DevelopingTokens{
                 &"]" => {
                     if self.bracket_para.len() > 0{
                         match self.bracket_para[self.bracket_para.len()-1]{
-                            ParaBracketValues::array_def => {
+                            ParaBracketValues::ArrayDef => {
                                 self.stream.push(Token{
                                     id: TokenIds::ArrayEnd,
                                     value: "]".to_string(),
                                 });
                                 self.bracket_para.pop();
                             }
-                            ParaBracketValues::array_index => {
+                            ParaBracketValues::ArrayIndex => {
                                 self.stream.push(Token{
                                     id: TokenIds::IndEnd,
                                     value: "]".to_string(),
@@ -383,14 +383,14 @@ impl DevelopingTokens{
                 &")" => {
                     if self.bracket_para.len() > 0{
                         match self.bracket_para[self.bracket_para.len() -1]{
-                            ParaBracketValues::ooo =>{
+                            ParaBracketValues::OOO =>{
                                 self.stream.push(Token{
                                     id: TokenIds::ParanEnd,
                                     value: ")".to_string(),
                                 });
                                 self.bracket_para.pop();
                             },
-                            ParaBracketValues::function =>{
+                            ParaBracketValues::Function =>{
                                 self.stream.push(Token{
                                     id: TokenIds::FunctionEnd,
                                     value: ")".to_string(),
@@ -462,13 +462,13 @@ impl DevelopingTokens{
                 &"," => {
                     if self.bracket_para.len() > 0{
                         match self.bracket_para[self.bracket_para.len()-1]{
-                            ParaBracketValues::function => {
+                            ParaBracketValues::Function => {
                                 self.stream.push(Token{
                                     id: TokenIds::ParamSeperator,
                                     value: ",".to_string(),
                                 });
                             },
-                            ParaBracketValues::array_def => {
+                            ParaBracketValues::ArrayDef => {
                                 self.stream.push(Token{
                                     id: TokenIds::ElemSeperator,
                                     value: ",".to_string(),
