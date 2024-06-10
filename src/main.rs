@@ -17,8 +17,8 @@
 */
 use std::fs;
 use std::env;
-use cbpcc::parts::tokenizer;
-use cbpcc::parts::tokenizer::tokenize;
+//use cbpcc::parts::Compiler;
+use cbpcc::parts::checker::check_code;
 
 fn main(){
     let mut argv = env::args();
@@ -29,7 +29,7 @@ fn main(){
     }
     else if argc == 2{
        let test = match fs::read_to_string(argv.nth(1).unwrap()){
-            Ok(n) => tokenize_stage(n),
+            Ok(n) => compile_code(n),
             Err(e) => {
                 eprintln!("problem opening or reading file, rust error msg: {}", e);
                 return;
@@ -39,8 +39,13 @@ fn main(){
     }
 }
 
-fn tokenize_stage(input: String){
-    let token_stream = tokenize(input);
+fn compile_code(input: String){
+    let mut program_code = cbpcc::parts::Compiler{
+        input,
+        tokens: Vec::new(),
+    };
+    program_code.tokenize();
+    println!("{:#?}", program_code.tokens);
 
-    println!("contents: {:#?}", token_stream);
+    //println!("contents: {:#?}", token_stream);
 }

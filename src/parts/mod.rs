@@ -16,3 +16,25 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 pub mod tokenizer;
+pub mod checker;
+use colored::Colorize;
+
+pub struct Compiler{
+    pub input: String,
+    pub tokens: Vec<tokenizer::Token>,
+}
+
+impl Compiler{
+    fn say_error(&mut self, msg: &str, line_num: usize){
+        eprintln!("{}", msg);
+        let lines: Vec<&str> = self.input.split('\n').collect();
+        if line_num < lines.len(){
+            eprintln!("error occured on line number {}: {}", line_num+1, lines[line_num].red());
+            panic!();
+        }
+        else{
+            panic!("line number panic occured on is greater than the number of lines. This is likely an error on the compiler\'s behalf please report this.");
+        }
+    }
+
+}

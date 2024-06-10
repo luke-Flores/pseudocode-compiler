@@ -1,3 +1,5 @@
+use super::Compiler;
+
 /*
     pseudocode compiler - an implementation of the CSP pseudocode language
     Copyright (C) 2024  Luke Flores
@@ -16,7 +18,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 #[derive(Debug, PartialEq, Copy, Clone)]
-enum TokenIds{
+pub enum TokenIds{
     FunctionName,
     FunctionBeg,
     FunctionEnd,
@@ -56,8 +58,8 @@ enum TokenIds{
 
 #[derive(Debug)]
 pub struct Token{
-    id: TokenIds,
-    value: String,
+    pub id: TokenIds,
+    pub value: String,
 }
 
 enum ParaBracketValues{
@@ -72,56 +74,26 @@ struct DevelopingTokens{
     // i would off load variables and functions to codegen time but variable declarations needs to happen during tokenization
     // these are  types of String because using &str was a pain
     vars: Vec<String>,
-    temp: Vec<String>,
     funcs: Vec<String>,
     //flags
     //each element represents a paranthese or bracket and its corresponding value
     bracket_para: Vec<ParaBracketValues>,
     in_proc: bool,
-    in_string: bool,
     untokenized: u16,
     neg_num: bool,
     skip: u8,
     block_count: u16,
+    line_num: usize,
 }
 
 impl DevelopingTokens{
-    fn match_tokens(&mut self, input: &Vec<&str>){
+    fn match_tokens(&mut self, input: &Vec<String>) -> Option<(&str, usize)>{
         'tokenloop : for (i, val) in input.iter().enumerate(){
             if self.skip != 0{
                 // reset neg_num
                 self.neg_num=false;
                 self.skip-=1;
                 continue;
-            }
-            else if self.in_string{
-                if val == &"\""{
-                    self.in_string = false;
-                    let mut string: String = String::new();
-                    for temp_string in self.temp.iter(){
-                        string.push_str(temp_string);
-                    }
-                    self.stream.push(Token{
-                        id: TokenIds::Stringval,
-                        value: string,
-                    });
-                    self.stream.push(Token{
-                        id: TokenIds::StringEnd,
-                        value: "\"".to_string(),
-                    });
-
-
-                    self.temp = Vec::new();
-                }
-                else{
-                    if self.temp.len() != 0 {
-                        if self.temp[self.temp.len() -1] != " "{
-                            self.temp.push(" ".to_string());
-                        }
-                    }
-                    self.temp.push(val.to_string());
-                }
-                continue 'tokenloop;
             }
             else if self.in_proc{
                 if val == &","{
@@ -133,7 +105,7 @@ impl DevelopingTokens{
                         });
                     }
                     else {
-                        panic!("\',\' appeared in a procedure defintion but was not precceeded by a parameter variable name");
+                        return Some(("\',\' appeared in a procedure defintion but was not precceeded by a parameter variable name", self.line_num));
                     }
                 }
                 else if val == &")"{
@@ -146,7 +118,7 @@ impl DevelopingTokens{
                         self.in_proc = false;
                     }
                     else{
-                        panic!("\',\' appeared but only a closing statement followed it after");
+                        return Some(("\',\' appeared but only a closing statement followed it after", self.line_num));
                     }
                 }
                 else {
@@ -158,12 +130,12 @@ impl DevelopingTokens{
                 }
                 continue 'tokenloop;
             }
-            match val {
-                &"(" => {
+            match &val[..] {
+                "(" => {
                     let mut is_func = false;
                     if i > 0{
                         for func in self.funcs.iter(){
-                            if input[i-1] == func{
+                            if &input[i-1] == func{
                                 is_func = true;
                                 break;
                             }
@@ -191,7 +163,7 @@ impl DevelopingTokens{
                         self.bracket_para.push(ParaBracketValues::OOO);
                     }
                 }
-                &"[" => {
+                "[" => {
                     let mut is_index = false;
                     if self.stream.len() > 0{
                         if self.stream[self.stream.len()-1].id == TokenIds::VarName || self.stream[self.stream.len()-1].id == TokenIds::IndEnd{
@@ -213,19 +185,19 @@ impl DevelopingTokens{
                         self.bracket_para.push(ParaBracketValues::ArrayDef);
                     }
                 }
-                &"true" => {
+                "true" => {
                     self.stream.push(Token{
                         id: TokenIds::Bool,
                         value: "true".to_string(),
                     });
                 }
-                &"false" => {
+                "false" => {
                     self.stream.push(Token{
                         id: TokenIds::Bool,
                         value: "false".to_string(),
                     });
                 }
-                &"]" => {
+                "]" => {
                     if self.bracket_para.len() > 0{
                         match self.bracket_para[self.bracket_para.len()-1]{
                             ParaBracketValues::ArrayDef => {
@@ -242,21 +214,44 @@ impl DevelopingTokens{
                                 });
                                 self.bracket_para.pop();
                             }
-                            _ => panic!("] appeared while an unclosed paranthese is still present"),
+                            _ => return Some(("] appeared while an unclosed paranthese is still present", self.line_num)),
                         }
                     }
                     else{
-                        panic!("] appeared without a corresponding [ to go with it");
+                        return Some(("] appeared without a corresponding [ to go with it", self.line_num));
                     }
                 }
-                &"\"" => {
+                "\"" => {
                     self.stream.push(Token{
                         id: TokenIds::StringBeg,
                         value: "\"".to_string(),
                     });
-                    self.in_string = true;
+                    if input.len() > i+1{
+                        self.stream.push(Token{
+                            id: TokenIds::Stringval,
+                            value: input[i+1].to_string(),
+                        });
+                        if input.len() > i+2{
+                            if input[i+2] == "\""{
+                                self.stream.push(Token{
+                                    id: TokenIds::StringEnd,
+                                    value: "\"".to_string(),
+                                });
+                            }
+                            else{
+                                return Some(("Somehow there was a non quotation mark character after the end of a string, please report this", self.line_num));
+                            }
+                        }
+                        else{
+                            return Some(("quotation mark occured without a closing quotation mark", self.line_num));
+                        }
+                    }
+                    else{
+                        return Some(("Quation mark occured without a corresponding one", self.line_num));
+                    }
+                    self.skip+=2;
                 }
-                &"PROCEDURE" => {
+                "PROCEDURE" => {
                     if input.len() > i+2{
                         self.stream.push(Token{
                             id: TokenIds::Procedure,
@@ -271,25 +266,25 @@ impl DevelopingTokens{
                         self.skip+=2
                     }
                 }
-                &"RETURN" => {
+                "RETURN" => {
                     self.stream.push(Token{
                         id: TokenIds::Return,
                         value: "RETURN".to_string(),
                     });
                 }
-                &"IF" => {
+                "IF" => {
                     self.stream.push(Token{
                         id: TokenIds::If,
                         value: "IF".to_string(),
                     });
                 }
-                &"ELSE" => {
+                "ELSE" => {
                     self.stream.push(Token{
                         id: TokenIds::Else,
                         value: "ELSE".to_string(),
                     });
                 }
-                &"FOR" => {
+                "FOR" => {
                     //4th string won't be checked here as it could be multiple things but something
                     //must be present so it is required
                     if input.len() > i+4{
@@ -305,35 +300,34 @@ impl DevelopingTokens{
                             });
                             self.vars.push(input[i+2].to_string());
                             if input[i+3] != "IN"{
-                                panic!("FOR EACH statement appeared without IN following");
+                                return Some(("FOR EACH statement appeared without IN following", self.line_num));
                             }
                         }
                         else{
-                            panic!("FOR appeared without a subsequent EACH following");
+                            return Some(("FOR appeared without a subsequent EACH following", self.line_num));
                         }
                     }
                     else{
-                        panic!("FOR appeared without enough strings after");
+                        return Some(("FOR appeared without enough strings after", self.line_num));
                     }
                 }
-                &"REPEAT" => {
+                "REPEAT" => {
                     let mut ok = false;
                     if input.len() > i+2{
                         if input[i+2] == "TIMES"{
                             let mut times_ok = false;
-                            let num_times = input[i+1];
 
-                            if num_times.parse::<f64>().is_ok(){
+                            if input[i+1].parse::<f64>().is_ok(){
                                 times_ok = true;
                             }
                             'varLoop : for varname in self.vars.iter(){
-                                if num_times == varname{
+                                if &input[i+1] == varname{
                                     times_ok = true;
                                     break 'varLoop;
                                 }
                             }
                             if !times_ok{
-                                panic!("REPEAT n TIMES statement occured but n isn\'t a number or variable");
+                                return Some(("REPEAT n TIMES statement occured but n isn\'t a number or variable", self.line_num));
                             }
                             self.stream.push(Token{
                                 id: TokenIds::Times,
@@ -358,17 +352,17 @@ impl DevelopingTokens{
                         }
                     }
                     if !ok{
-                        panic!("REPEAT found but was followed by neither a number or the keyword UNTIL");
+                        return Some(("REPEAT found but was followed by neither a number or the keyword UNTIL", self.line_num));
                     }
                 }
-                &"{" =>{
+                "{" =>{
                     self.stream.push(Token{
                         id: TokenIds::BlockBeg,
                         value: "{".to_string(),
                     });
                     self.block_count+=1;
                 }
-                &"}" => {
+                "}" => {
                     if self.block_count > 0{
                         self.stream.push(Token{
                             id: TokenIds::BlockEnd,
@@ -377,10 +371,10 @@ impl DevelopingTokens{
                         self.block_count-=1;
                     }
                     else{
-                        panic!("`}}` occured without a corresponding `{{`");
+                        return Some(("`}}` occured without a corresponding `{{`", self.line_num));
                     }
                 }
-                &")" => {
+                ")" => {
                     if self.bracket_para.len() > 0{
                         match self.bracket_para[self.bracket_para.len() -1]{
                             ParaBracketValues::OOO =>{
@@ -397,14 +391,14 @@ impl DevelopingTokens{
                                 });
                                 self.bracket_para.pop();
                             },
-                            _ => panic!(") occured in side of an unclosed array or array index"),
+                            _ => return Some((") occured in side of an unclosed array or array index", self.line_num)),
                         }
                     }
                     else{
-                        panic!("Paranthese closed without a corresponding opening paranthese");
+                        return Some(("Paranthese closed without a corresponding opening paranthese", self.line_num));
                     }
                 }
-                &"<-" => {
+                "<-" => {
                     if i > 0{
                         self.stream.push(Token{
                             id: TokenIds::VarDec,
@@ -419,10 +413,10 @@ impl DevelopingTokens{
                         self.vars.push(input[i-1].to_string());
                     }
                     else {
-                        panic!("<- used without a variable name");
+                        return Some(("<- used without a variable name", self.line_num));
                     }
                 }
-                &"-" =>{
+                "-" =>{
                     if self.stream.len() > 0{
                         let prev_token = self.stream[self.stream.len()-1].id;
                         if prev_token == TokenIds::Num || prev_token == TokenIds::VarName{
@@ -441,25 +435,27 @@ impl DevelopingTokens{
                         continue 'tokenloop;
                     }
                 }
-                &"+" | &"*" | &"/" | &"MOD" | &"=" |  &"OR" | &"AND" |  &"NOT" => {
+                "+" | "*" | "/" | "MOD" | "=" |  "OR" | "AND" |  "NOT" => {
                     self.stream.push(Token{
                         id: TokenIds::Operand,
                         value: val.to_string(),
                     });
                 }
-                &"!" => {
-                    match input.iter().nth(i+1){
-                        Some(&"=") =>{
+                "!" => {
+                    if i < input.len()-1{
+                        if input[i+1] == "=".to_string(){
                             self.stream.push(Token{
                                 id: TokenIds::Operand,
                                 value: "!=".to_string(),
                             });
                             self.skip+=1;
-                        },
-                        _ => panic!("Expected = after ! but did not get any value or a different value"),
+                        }
+                        else{
+                            return Some(("Expected \'=\' after an \'!\' but instead a different character or no character followed", self.line_num));
+                        }
                     }
                 }
-                &"," => {
+                "," => {
                     if self.bracket_para.len() > 0{
                         match self.bracket_para[self.bracket_para.len()-1]{
                             ParaBracketValues::Function => {
@@ -475,42 +471,44 @@ impl DevelopingTokens{
                                 });
                             },
                             _ => {
-                                panic!("Comma appeared while not in a function parameter statement");
+                                return Some(("Comma appeared while not in a function parameter statement", self.line_num));
                             },
                         }
                     }
                     else {
-                        panic!("comma appeared while not in a function parameter statement");
+                        return Some(("comma appeared while not in a function parameter statement", self.line_num));
                     }
                 }
-                &">" | &"<" => {
-                    match input.iter().nth(i+1){
-                        Some(&"=") =>{
+                ">" | "<" => {
+                    if i < input.len()-1{
+                        if input[i+1] == "="{
                             self.stream.push(Token{
                                 id: TokenIds::Operand,
                                 value: format!("{}=",val),
                             });
                             self.skip+=1;
-                        },
-                        _ => {
+                        }
+                        else{
                             self.stream.push(Token{
                                 id: TokenIds::Operand,
                                 value: val.to_string(),
                             });
-                        },
+                        }
                     }
                 }
-                &"\n" => {
+                "\n" => {
                     if self.untokenized != 0{
                         println!("{:?}", self.stream);
-                        panic!("Failed to tokenize a statement.");
+                        return Some(("Failed to tokenize a statement.", self.line_num));
                     }
                     else if self.bracket_para.len() > 0{
-                        panic!("Terminator apeared inside of a paranthese or bracket statement");
+                        return Some(("Terminator apeared inside of a paranthese or bracket statement", self.line_num));
                     }
                     else{
+                        self.line_num+=1;
                         // dont't push a terminator if the previous token was a terminator or if its
                         // the first element just so its easier down the road
+                        // however either way a new line character means a new line in the input
                         if self.stream.len() > 0{
                             if self.stream[self.stream.len()-1].id != TokenIds::Terminator{
                                 self.stream.push(Token{
@@ -562,58 +560,72 @@ impl DevelopingTokens{
             self.neg_num = false;
         }
         if self.block_count > 0{
-            panic!("File ended but there are still unclosed block openers({{)");
+
+            return Some(("File ended but there are still unclosed block openers({{)", self.line_num));
         }
+        return None;
     }
 }
 
-fn preproccess(preproccessed: &mut String, input: String){
+fn preproccess(preproccessed: &mut Vec<String>, input: String){
+    let mut i: usize = 0;
     let mut chars = input.chars();
-    let mut i = 0;
+    let mut preproclen: usize = 0;
+    preproccessed.push(String::new());
     while let Some(letter) = chars.next(){
-        match letter {
-            // split string at these values plus space
-            ')' | '('| '<' | '\"' | '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!' | ',' | '}' | '{' | '[' | ']'=> {
-                //prevent useless empty strings forming
-                if i > 0{
-                    if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
-                        preproccessed.push(' ');
+        match letter{
+            ')' | '('| '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!' | ',' | '}' | '{' | '[' | ']'=> {
+                preproccessed.push(letter.to_string());
+                preproccessed.push(String::new());
+                preproclen+=2;
+            }
+            '<' => {
+                preproccessed.push("<".to_string());
+                preproclen+=1;
+                if input.len() > i{
+                    if input.chars().nth(i+1) == Some('-'){
+                        preproccessed[preproclen].push('-');
+                        chars.next();
+                        i+=1;
                     }
                 }
-                preproccessed.push(letter);
-                // if it is <- then concatenate it
-                if letter == '<'{
-                    match input.chars().nth(i+1){
-                        Some('-') => {
-                            preproccessed.push('-');
-                            // skip over the '-'
-                            i+=1;
-                            chars.next();
+                preproclen+=1;
+                preproccessed.push(String::new());
+            }
+            '\"' => {
+                preproccessed.push("\"".to_string());
+                preproccessed.push(String::new());
+                preproclen+=2;
+                'strloop: loop{
+                    let character = chars.next();
+                    match character{
+                        Some('\"') => {
+                            preproccessed.push("\"".to_string());
+                            preproclen+=1;
+                            break 'strloop;
                         },
-                        _ => (),
-                    }
-                }
-                preproccessed.push(' ');
-            },
-            ' ' => {
-                if i > 0{
-                    if preproccessed.chars().nth(preproccessed.len()-1).unwrap() != ' '{
-                        preproccessed.push(' ');
+                        None => break 'strloop,
+                        _ => preproccessed[preproclen].push(character.unwrap()),
+
                     }
                 }
             }
-            _ => preproccessed.push(letter),
+            ' ' => {
+                preproccessed.push(String::new());
+                preproclen+=1;
+            }
+            _ => preproccessed[preproclen].push(letter),
         }
         i+=1;
     }
 
 }
 
-fn replace_empty_strings(preproccessed: &mut Vec<&str>){
+fn replace_empty_strings(preproccessed: &mut Vec<String>){
     let mut i = 0;
     while i< preproccessed.len(){
         if preproccessed[i] == ""{
-            preproccessed[i]=" ";
+            preproccessed.remove(i);
         }
         else{
             i+=1;
@@ -621,29 +633,35 @@ fn replace_empty_strings(preproccessed: &mut Vec<&str>){
     }
 }
 
-pub fn tokenize(input: String) -> Vec<Token>{
-    // make mainpulating easier
-    let mut preproccessed: String = String::with_capacity(input.len());
-    preproccess(&mut preproccessed, input.clone());
+impl Compiler {
+    pub fn tokenize(&mut self){
+        // make mainpulating easier
+        let mut preproccessed: Vec<String> = Vec::new();
+        preproccess(&mut preproccessed, self.input.clone());
 
-    let mut preproccessed: Vec<&str> = preproccessed.split(' ').collect();
 
-    //replace empty strings so they don't cause problems
-    replace_empty_strings(&mut preproccessed);
+        //replace empty strings so they don't cause problems
+        replace_empty_strings(&mut preproccessed);
 
-    let mut res = DevelopingTokens{
-        stream: Vec::new(),
-        bracket_para: Vec::new(),
-        in_string: false,
-        in_proc: false,
-        temp: Vec::new(),
-        untokenized: 0,
-        neg_num: false,
-        vars: Vec::new(),
-        funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string(), "INSERT".to_string(), "REMOVE".to_string(), "APPEND".to_string(), "LENGTH".to_string()],
-        skip: 0,
-        block_count: 0,
-    };
-    res.match_tokens(&preproccessed);
-    return res.stream;
+        let mut res = DevelopingTokens{
+            stream: Vec::new(),
+            bracket_para: Vec::new(),
+            in_proc: false,
+            untokenized: 0,
+            neg_num: false,
+            vars: Vec::new(),
+            funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string(), "INSERT".to_string(), "REMOVE".to_string(), "APPEND".to_string(), "LENGTH".to_string()],
+            skip: 0,
+            block_count: 0,
+            line_num: 0,
+        };
+        // return types specifies erorr None is no error Some is an error.
+        // I can't do the say error method in the match tokens method because it is part of another
+        // object
+        match res.match_tokens(&preproccessed){
+            Some(error) => self.say_error(error.0, error.1),
+            None => (),
+        }
+        self.tokens = res.stream;
+    }
 }

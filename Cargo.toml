@@ -12,3 +12,4 @@ codegen-units = 1
 strip = true
 
 [dependencies]
+colored = "2.1.0"
