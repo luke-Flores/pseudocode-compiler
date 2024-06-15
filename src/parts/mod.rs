@@ -22,10 +22,12 @@ use colored::Colorize;
 pub struct Compiler{
     pub input: String,
     pub tokens: Vec<tokenizer::Token>,
+    pub var_list: Vec<(String, checker::Type)>,
 }
 
+
 impl Compiler{
-    fn say_error(&mut self, msg: &str, line_num: usize){
+    fn say_error(&self, msg: &str, line_num: usize){
         eprintln!("{}", msg);
         let lines: Vec<&str> = self.input.split('\n').collect();
         if line_num < lines.len(){

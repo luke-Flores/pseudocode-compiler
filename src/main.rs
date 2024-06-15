@@ -18,7 +18,7 @@
 use std::fs;
 use std::env;
 //use cbpcc::parts::Compiler;
-use cbpcc::parts::checker::check_code;
+//use cbpcc::parts::checker::check_code;
 
 fn main(){
     let mut argv = env::args();
@@ -43,9 +43,10 @@ fn compile_code(input: String){
     let mut program_code = cbpcc::parts::Compiler{
         input,
         tokens: Vec::new(),
+        var_list: Vec::new(),
     };
     program_code.tokenize();
-    println!("{:#?}", program_code.tokens);
+    //println!("{:#?}", program_code.tokens);
+    program_code.check_code();
 
-    //println!("contents: {:#?}", token_stream);
 }
