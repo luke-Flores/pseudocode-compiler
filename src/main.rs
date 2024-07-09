@@ -46,7 +46,7 @@ fn compile_code(input: String){
         var_list: Vec::new(),
     };
     program_code.tokenize();
-    //println!("{:#?}", program_code.tokens);
-    program_code.check_code();
+    println!("{:#?}", program_code.tokens);
+    //program_code.check_code();
 
 }

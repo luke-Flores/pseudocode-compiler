@@ -73,7 +73,7 @@ struct DevelopingTokens{
     stream: Vec<Token>,
     // i would off load variables and functions to codegen time but variable declarations needs to happen during tokenization
     // these are  types of String because using &str was a pain
-    vars: Vec<String>,
+    vars: Vec<Vec<String>>,
     funcs: Vec<String>,
     //flags
     //each element represents a paranthese or bracket and its corresponding value
@@ -82,12 +82,13 @@ struct DevelopingTokens{
     untokenized: u16,
     neg_num: bool,
     skip: u8,
-    block_count: u16,
+    block_count: usize,
     line_num: usize,
 }
 
 impl DevelopingTokens{
     fn match_tokens(&mut self, input: &Vec<String>) -> Option<(&str, usize)>{
+        self.vars.push(Vec::new());
         'tokenloop : for (i, val) in input.iter().enumerate(){
             if self.skip != 0{
                 // reset neg_num
@@ -116,6 +117,24 @@ impl DevelopingTokens{
                             value: ")".to_string(),
                         });
                         self.in_proc = false;
+                        'blockloop : for value in input[i+1..input.len()].iter(){
+                            self.skip+=1;
+                            // this is neccesary to start the function but keep parameters in the
+                            // scope of the function and not declare them in an outer scope
+                            if value == "{"{
+                                self.stream.push(Token{
+                                    id: TokenIds::BlockBeg,
+                                    value: "{".to_string(),
+                                });
+                                break 'blockloop;
+                            }
+                            else if value == &"\n"{
+                                self.line_num+=1;
+                            }
+                            else if value != &""{
+                                return Some(("Procedure statement ended with a ) but a block opener ({) did not follow", self.line_num));
+                            }
+                        }
                     }
                     else{
                         return Some(("\',\' appeared but only a closing statement followed it after", self.line_num));
@@ -126,7 +145,7 @@ impl DevelopingTokens{
                         id: TokenIds::ParamName,
                         value: val.to_string(),
                     });
-                    self.vars.push(val.to_string())
+                    self.vars[self.block_count].push(val.to_string())
                 }
                 continue 'tokenloop;
             }
@@ -243,11 +262,11 @@ impl DevelopingTokens{
                             }
                         }
                         else{
-                            return Some(("quotation mark occured without a closing quotation mark", self.line_num));
+                            return Some(("Quotation mark occured without a closing quotation mark", self.line_num));
                         }
                     }
                     else{
-                        return Some(("Quation mark occured without a corresponding one", self.line_num));
+                        return Some(("Quotation mark occured without a corresponding one", self.line_num));
                     }
                     self.skip+=2;
                 }
@@ -258,12 +277,24 @@ impl DevelopingTokens{
                             value: input[i+1].to_string(),
                         });
                         self.funcs.push(input[i+1].to_string());
-                        self.stream.push(Token{
-                            id: TokenIds::ProcBeg,
-                            value: "(".to_string(),
-                        });
+                        if input[i+2] == "("{
+                            self.stream.push(Token{
+                                id: TokenIds::ProcBeg,
+                                value: "(".to_string(),
+                            });
+                        }
+                        else{
+                            return Some(("PROCEDURE keyword and a name for the procedure followed however a character other than a opening paranthese followed", self.line_num));
+                        }
+                        //push new block. This needs to be done now as the parameters follow a
+                        //the stack as if they were declared after the block begining
+                        self.vars.push(Vec::new());
+                        self.block_count+=1;
                         self.in_proc = true;
                         self.skip+=2
+                    }
+                    else{
+                        return Some(("PROCEDURE keyword appeared but not enough words followed (try adding a function name and opening paranthese)", self.line_num));
                     }
                 }
                 "RETURN" => {
@@ -298,7 +329,7 @@ impl DevelopingTokens{
                                 id: TokenIds::ForVar,
                                 value: input[i+2].to_string(),
                             });
-                            self.vars.push(input[i+2].to_string());
+                            self.vars[self.block_count].push(input[i+2].to_string());
                             if input[i+3] != "IN"{
                                 return Some(("FOR EACH statement appeared without IN following", self.line_num));
                             }
@@ -320,7 +351,7 @@ impl DevelopingTokens{
                             if input[i+1].parse::<f64>().is_ok(){
                                 times_ok = true;
                             }
-                            'varLoop : for varname in self.vars.iter(){
+                            'varLoop : for varname in self.vars[self.block_count].iter(){
                                 if &input[i+1] == varname{
                                     times_ok = true;
                                     break 'varLoop;
@@ -361,6 +392,7 @@ impl DevelopingTokens{
                         value: "{".to_string(),
                     });
                     self.block_count+=1;
+                    self.vars.push(Vec::new());
                 }
                 "}" => {
                     if self.block_count > 0{
@@ -369,6 +401,7 @@ impl DevelopingTokens{
                             value: "}".to_string(),
                         });
                         self.block_count-=1;
+                        self.vars.pop();
                     }
                     else{
                         return Some(("`}}` occured without a corresponding `{{`", self.line_num));
@@ -399,18 +432,27 @@ impl DevelopingTokens{
                     }
                 }
                 "<-" => {
+                    let mut new_var = true;
                     if i > 0{
-                        self.stream.push(Token{
-                            id: TokenIds::VarDec,
-                            value: input[i-1].to_string(),
-                        });
+                        'varloop : for var in self.vars[self.block_count].iter(){
+                            if var == &input[i-1]{
+                                new_var = false;
+                                break 'varloop;
+                            }
+                        }
+                        if new_var{
+                            self.stream.push(Token{
+                                id: TokenIds::VarDec,
+                                value: input[i-1].to_string(),
+                            });
+                            //The previous statement should have been untokenized
+                            self.untokenized-=1;
+                            self.vars[self.block_count].push(input[i-1].to_string());
+                        }
                         self.stream.push(Token{
                             id: TokenIds::Asigment,
                             value: "<-".to_string(),
                         });
-                        //The previous statement should have been untokenized
-                        self.untokenized-=1;
-                        self.vars.push(input[i-1].to_string());
                     }
                     else {
                         return Some(("<- used without a variable name", self.line_num));
@@ -498,8 +540,7 @@ impl DevelopingTokens{
                 }
                 "\n" => {
                     if self.untokenized != 0{
-                        println!("{:?}", self.stream);
-                        return Some(("Failed to tokenize a statement.", self.line_num));
+                        return Some(("Failed understand something in this line. Common mistakes include variables accessed from out of scope or misspellings.", self.line_num));
                     }
                     else if self.bracket_para.len() > 0{
                         return Some(("Terminator apeared inside of a paranthese or bracket statement", self.line_num));
@@ -539,8 +580,8 @@ impl DevelopingTokens{
                     }
                     // check if the val is equal to a variable name
                     if input.len() > i+1{
-                        if input[i+1] != "<-"{
-                            for var in self.vars.iter(){
+                        for scope in self.vars.iter(){
+                            for var in scope{
                                 if val == var{
                                     self.stream.push(Token{
                                         id: TokenIds::VarName,
@@ -560,7 +601,6 @@ impl DevelopingTokens{
             self.neg_num = false;
         }
         if self.block_count > 0{
-
             return Some(("File ended but there are still unclosed block openers({{)", self.line_num));
         }
         return None;

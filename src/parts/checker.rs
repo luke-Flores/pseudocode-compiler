@@ -46,9 +46,10 @@ pub struct Type{
 
 impl Compiler{
     pub fn check_code(&mut self) {
-        self.check_data();
+       // self.check_data();
     }
     //asign variable and function types and ensure that variables are used at proper scopes
+    /*
     fn check_data(&mut self){
         let mut var_list: Vec<((String, usize), Type)> = Vec::new();
         // keeps list of vars that would be in scope
@@ -134,4 +135,5 @@ impl Compiler{
         }
         self.var_list = var_list;
     }
+    */
 }
