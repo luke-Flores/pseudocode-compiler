@@ -6,8 +6,8 @@ b <- 3
 a+b
 a-b
 a*b
-a/b
 a MOD b
+a/b
 RANDOM(a, b)
 a = b
 a != b
@@ -48,4 +48,3 @@ PROCEDURE procName(parameter1, parameter2){
     RETURN parameter1 +parameter2
 }
 RETURN a
-

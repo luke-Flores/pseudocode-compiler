@@ -17,6 +17,7 @@ use super::Compiler;
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TokenIds{
     FunctionName,
@@ -72,7 +73,6 @@ enum ParaBracketValues{
 struct DevelopingTokens{
     stream: Vec<Token>,
     // i would off load variables and functions to codegen time but variable declarations needs to happen during tokenization
-    // these are  types of String because using &str was a pain
     vars: Vec<Vec<String>>,
     funcs: Vec<String>,
     //flags
@@ -82,7 +82,6 @@ struct DevelopingTokens{
     untokenized: u16,
     neg_num: bool,
     skip: u8,
-    block_count: usize,
     line_num: usize,
 }
 
@@ -145,36 +144,29 @@ impl DevelopingTokens{
                         id: TokenIds::ParamName,
                         value: val.to_string(),
                     });
-                    self.vars[self.block_count].push(val.to_string())
+                    // !
+                    self.vars.last_mut().unwrap().push(val.to_string())
                 }
                 continue 'tokenloop;
             }
             match &val[..] {
                 "(" => {
-                    let mut is_func = false;
-                    if i > 0{
-                        for func in self.funcs.iter(){
-                            if &input[i-1] == func{
-                                is_func = true;
-                                break;
-                            }
-                        }
-                        if is_func{
-                            self.stream.push(Token{
-                                id: TokenIds::FunctionName,
-                                //already checked that i is greater than 0
-                                value: input[i-1].to_string(),
-                            });
-                            self.stream.push(Token{
-                                id: TokenIds::FunctionBeg,
-                                value: "(".to_string(),
-                            });
-                            self.bracket_para.push(ParaBracketValues::Function);
-                            //an untokenized function statement should have appeared
-                            self.untokenized-=1;
-                        }
+                    if i > 0 && self.funcs.contains(&input[i-1]){
+                        self.stream.push(Token{
+                            id: TokenIds::FunctionName,
+                            //already checked that i is greater than 0
+                            value: input[i-1].to_string(),
+                        });
+                        self.stream.push(Token{
+                            id: TokenIds::FunctionBeg,
+                            value: "(".to_string(),
+                        });
+                        self.bracket_para.push(ParaBracketValues::Function);
+                        //an untokenized function statement should have appeared
+                        self.untokenized-=1;
+
                     }
-                    if !is_func{
+                    else {
                         self.stream.push(Token{
                             id: TokenIds::ParanBeg,
                             value: "(".to_string(),
@@ -183,13 +175,7 @@ impl DevelopingTokens{
                     }
                 }
                 "[" => {
-                    let mut is_index = false;
-                    if self.stream.len() > 0{
-                        if self.stream[self.stream.len()-1].id == TokenIds::VarName || self.stream[self.stream.len()-1].id == TokenIds::IndEnd{
-                            is_index = true;
-                        }
-                    }
-                    if is_index{
+                    if self.stream.len() > 0 && (self.stream.last().unwrap().id == TokenIds::VarName || self.stream.last().unwrap().id == TokenIds::IndEnd){
                         self.stream.push(Token{
                             id: TokenIds::IndBeg,
                             value: "[".to_string(),
@@ -217,27 +203,22 @@ impl DevelopingTokens{
                     });
                 }
                 "]" => {
-                    if self.bracket_para.len() > 0{
-                        match self.bracket_para[self.bracket_para.len()-1]{
-                            ParaBracketValues::ArrayDef => {
-                                self.stream.push(Token{
-                                    id: TokenIds::ArrayEnd,
-                                    value: "]".to_string(),
-                                });
-                                self.bracket_para.pop();
-                            }
-                            ParaBracketValues::ArrayIndex => {
-                                self.stream.push(Token{
-                                    id: TokenIds::IndEnd,
-                                    value: "]".to_string(),
-                                });
-                                self.bracket_para.pop();
-                            }
-                            _ => return Some(("] appeared while an unclosed paranthese is still present", self.line_num)),
+                    match self.bracket_para.last(){
+                        Some(ParaBracketValues::ArrayDef) => {
+                            self.stream.push(Token{
+                                id: TokenIds::ArrayEnd,
+                                value: "]".to_string(),
+                            });
+                            self.bracket_para.pop();
                         }
-                    }
-                    else{
-                        return Some(("] appeared without a corresponding [ to go with it", self.line_num));
+                        Some(ParaBracketValues::ArrayIndex) => {
+                            self.stream.push(Token{
+                                id: TokenIds::IndEnd,
+                                value: "]".to_string(),
+                            });
+                            self.bracket_para.pop();
+                        }
+                        _ => return Some(("] appeared while an unclosed paranthese is still present", self.line_num)),
                     }
                 }
                 "\"" => {
@@ -289,7 +270,7 @@ impl DevelopingTokens{
                         //push new block. This needs to be done now as the parameters follow a
                         //the stack as if they were declared after the block begining
                         self.vars.push(Vec::new());
-                        self.block_count+=1;
+                        //self.block_count+=1;
                         self.in_proc = true;
                         self.skip+=2
                     }
@@ -329,7 +310,7 @@ impl DevelopingTokens{
                                 id: TokenIds::ForVar,
                                 value: input[i+2].to_string(),
                             });
-                            self.vars[self.block_count].push(input[i+2].to_string());
+                            self.vars.last_mut().unwrap().push(input[i+2].to_string());
                             if input[i+3] != "IN"{
                                 return Some(("FOR EACH statement appeared without IN following", self.line_num));
                             }
@@ -346,30 +327,21 @@ impl DevelopingTokens{
                     let mut ok = false;
                     if input.len() > i+2{
                         if input[i+2] == "TIMES"{
-                            let mut times_ok = false;
-
-                            if input[i+1].parse::<f64>().is_ok(){
-                                times_ok = true;
+                            if input[i+1].parse::<f64>().is_ok() || self.vars.last().unwrap().contains(&input[i+1]){
+                                self.stream.push(Token{
+                                    id: TokenIds::Times,
+                                    value: "TIMES".to_string(),
+                                });
+                                self.stream.push(Token{
+                                    id: TokenIds::Num,
+                                    value: input[i+1].to_string(),
+                                });
+                                ok = true;
+                                self.skip+=2;
                             }
-                            'varLoop : for varname in self.vars[self.block_count].iter(){
-                                if &input[i+1] == varname{
-                                    times_ok = true;
-                                    break 'varLoop;
-                                }
-                            }
-                            if !times_ok{
+                            else{
                                 return Some(("REPEAT n TIMES statement occured but n isn\'t a number or variable", self.line_num));
                             }
-                            self.stream.push(Token{
-                                id: TokenIds::Times,
-                                value: "TIMES".to_string(),
-                            });
-                            self.stream.push(Token{
-                                id: TokenIds::Num,
-                                value: input[i+1].to_string(),
-                            });
-                            ok = true;
-                            self.skip+=2;
                         }
                     }
                     if input.len() > i+1{
@@ -391,16 +363,15 @@ impl DevelopingTokens{
                         id: TokenIds::BlockBeg,
                         value: "{".to_string(),
                     });
-                    self.block_count+=1;
+                    //self.block_count+=1;
                     self.vars.push(Vec::new());
                 }
                 "}" => {
-                    if self.block_count > 0{
+                    if self.vars.len() > 0{
                         self.stream.push(Token{
                             id: TokenIds::BlockEnd,
                             value: "}".to_string(),
                         });
-                        self.block_count-=1;
                         self.vars.pop();
                     }
                     else{
@@ -408,68 +379,56 @@ impl DevelopingTokens{
                     }
                 }
                 ")" => {
-                    if self.bracket_para.len() > 0{
-                        match self.bracket_para[self.bracket_para.len() -1]{
-                            ParaBracketValues::OOO =>{
-                                self.stream.push(Token{
-                                    id: TokenIds::ParanEnd,
-                                    value: ")".to_string(),
-                                });
-                                self.bracket_para.pop();
-                            },
-                            ParaBracketValues::Function =>{
-                                self.stream.push(Token{
-                                    id: TokenIds::FunctionEnd,
-                                    value: ")".to_string(),
-                                });
-                                self.bracket_para.pop();
-                            },
-                            _ => return Some((") occured in side of an unclosed array or array index", self.line_num)),
-                        }
-                    }
-                    else{
-                        return Some(("Paranthese closed without a corresponding opening paranthese", self.line_num));
+                    match self.bracket_para.last(){
+                        Some(ParaBracketValues::OOO) =>{
+                            self.stream.push(Token{
+                                id: TokenIds::ParanEnd,
+                                value: ")".to_string(),
+                            });
+                            self.bracket_para.pop();
+                        },
+                        Some(ParaBracketValues::Function) =>{
+                            self.stream.push(Token{
+                                id: TokenIds::FunctionEnd,
+                                value: ")".to_string(),
+                            });
+                            self.bracket_para.pop();
+                        },
+                        _ => return Some((") occured inside of an unclosed array or array index", self.line_num)),
                     }
                 }
                 "<-" => {
-                    let mut new_var = true;
-                    if i > 0{
-                        'varloop : for var in self.vars[self.block_count].iter(){
-                            if var == &input[i-1]{
-                                new_var = false;
-                                break 'varloop;
-                            }
-                        }
-                        if new_var{
-                            self.stream.push(Token{
-                                id: TokenIds::VarDec,
-                                value: input[i-1].to_string(),
-                            });
-                            //The previous statement should have been untokenized
-                            self.untokenized-=1;
-                            self.vars[self.block_count].push(input[i-1].to_string());
-                        }
+                    if !(i > 0 && (self.vars.last().unwrap().contains(&input[i-1]))){
                         self.stream.push(Token{
-                            id: TokenIds::Asigment,
-                            value: "<-".to_string(),
+                            id: TokenIds::VarDec,
+                            value: input[i-1].to_string(),
                         });
+                        //The previous statement should have been untokenized
+                        self.untokenized-=1;
+                        self.vars.last_mut().unwrap().push(input[i-1].to_string());
                     }
-                    else {
+                    else if i == 0{
                         return Some(("<- used without a variable name", self.line_num));
                     }
+                    self.stream.push(Token{
+                        id: TokenIds::Asigment,
+                        value: "<-".to_string(),
+                    });
+
                 }
                 "-" =>{
                     if self.stream.len() > 0{
-                        let prev_token = self.stream[self.stream.len()-1].id;
-                        if prev_token == TokenIds::Num || prev_token == TokenIds::VarName{
-                            self.stream.push(Token{
-                                id: TokenIds::Operand,
-                                value: "-".to_string(),
-                            });
-                        }
-                        else{
-                            self.neg_num = true;
-                            continue 'tokenloop;
+                        match self.stream.last().unwrap().id{
+                            TokenIds::Num | TokenIds::VarName => {
+                                self.stream.push(Token{
+                                    id: TokenIds::Operand,
+                                    value: "-".to_string(),
+                                });
+                            }
+                            _ => {
+                                self.neg_num = true;
+                                continue 'tokenloop;
+                            }
                         }
                     }
                     else{
@@ -484,81 +443,66 @@ impl DevelopingTokens{
                     });
                 }
                 "!" => {
-                    if i < input.len()-1{
-                        if input[i+1] == "=".to_string(){
-                            self.stream.push(Token{
-                                id: TokenIds::Operand,
-                                value: "!=".to_string(),
-                            });
-                            self.skip+=1;
-                        }
-                        else{
-                            return Some(("Expected \'=\' after an \'!\' but instead a different character or no character followed", self.line_num));
-                        }
+                    if input.get(i+1) == Some(&"=".to_string()){
+                        self.stream.push(Token{
+                            id: TokenIds::Operand,
+                            value: "!=".to_string(),
+                        });
+                        self.skip+=1;
+                    }
+                    else{
+                        return Some(("Expected \'=\' after an \'!\' but instead a different character or no character followed", self.line_num));
                     }
                 }
                 "," => {
-                    if self.bracket_para.len() > 0{
-                        match self.bracket_para[self.bracket_para.len()-1]{
-                            ParaBracketValues::Function => {
-                                self.stream.push(Token{
-                                    id: TokenIds::ParamSeperator,
-                                    value: ",".to_string(),
-                                });
-                            },
-                            ParaBracketValues::ArrayDef => {
-                                self.stream.push(Token{
-                                    id: TokenIds::ElemSeperator,
-                                    value: ",".to_string(),
-                                });
-                            },
-                            _ => {
-                                return Some(("Comma appeared while not in a function parameter statement", self.line_num));
-                            },
-                        }
-                    }
-                    else {
-                        return Some(("comma appeared while not in a function parameter statement", self.line_num));
+                    match self.bracket_para.last(){
+                        Some(ParaBracketValues::Function) => {
+                            self.stream.push(Token{
+                                id: TokenIds::ParamSeperator,
+                                value: ",".to_string(),
+                            });
+                        },
+                        Some(ParaBracketValues::ArrayDef) => {
+                            self.stream.push(Token{
+                                id: TokenIds::ElemSeperator,
+                                value: ",".to_string(),
+                            });
+                        },
+                        _ => {
+                            return Some(("Comma appeared while not in a function parameter statement", self.line_num));
+                        },
                     }
                 }
                 ">" | "<" => {
-                    if i < input.len()-1{
-                        if input[i+1] == "="{
-                            self.stream.push(Token{
-                                id: TokenIds::Operand,
-                                value: format!("{}=",val),
-                            });
-                            self.skip+=1;
-                        }
-                        else{
-                            self.stream.push(Token{
-                                id: TokenIds::Operand,
-                                value: val.to_string(),
-                            });
-                        }
+                    if input.get(i+1) == Some(&String::from("=")){
+                        self.stream.push(Token{
+                            id: TokenIds::Operand,
+                            value: format!("{}=",val),
+                        });
+                        self.skip+=1;
+                    }
+                    else{
+                        self.stream.push(Token{
+                            id: TokenIds::Operand,
+                            value: val.to_string(),
+                        });
                     }
                 }
                 "\n" => {
                     if self.untokenized != 0{
-                        return Some(("Failed understand something in this line. Common mistakes include variables accessed from out of scope or misspellings.", self.line_num));
+                        return Some(("Failed to understand something in this line. Common mistakes include variables accessed from out of scope or misspellings.", self.line_num));
                     }
                     else if self.bracket_para.len() > 0{
                         return Some(("Terminator apeared inside of a paranthese or bracket statement", self.line_num));
                     }
                     else{
                         self.line_num+=1;
-                        // dont't push a terminator if the previous token was a terminator or if its
-                        // the first element just so its easier down the road
-                        // however either way a new line character means a new line in the input
-                        if self.stream.len() > 0{
-                            if self.stream[self.stream.len()-1].id != TokenIds::Terminator{
-                                self.stream.push(Token{
-                                    id: TokenIds::Terminator,
-                                    value: "\n".to_string(),
-                                });
-                            }
+                        if self.stream.len() > 0 && (self.stream.last().unwrap().id != TokenIds::Terminator){
+                            self.stream.push(Token{
+                                id: TokenIds::Terminator,
+                                value: "\n".to_string(),
+                            });
                         }
-
                     }
                 }
                 _ =>{
@@ -579,86 +523,85 @@ impl DevelopingTokens{
                         continue 'tokenloop;
                     }
                     // check if the val is equal to a variable name
-                    if input.len() > i+1{
-                        for scope in self.vars.iter(){
-                            for var in scope{
-                                if val == var{
-                                    self.stream.push(Token{
-                                        id: TokenIds::VarName,
-                                        value: val.to_string(),
-                                    });
-                                    self.neg_num = false;
-                                    continue 'tokenloop;
-                                }
-                            }
+                    for scope in self.vars.iter(){
+                        if scope.contains(val){
+                            self.stream.push(Token{
+                                id: TokenIds::VarName,
+                                value: val.to_string(),
+                            });
+                            self.neg_num = false;
+                            continue 'tokenloop;
                         }
                     }
-
                     self.untokenized+=1;
                 }
             }
             // reset the neg_num flag so that every number doesnt become negative
             self.neg_num = false;
         }
-        if self.block_count > 0{
-            return Some(("File ended but there are still unclosed block openers({{)", self.line_num));
+        if self.vars.len() > 1{
+            return Some(("File ended but there are still unclosed block openers(curly braces)", self.line_num));
         }
         return None;
     }
 }
 
 fn preproccess(preproccessed: &mut Vec<String>, input: String){
-    let mut i: usize = 0;
-    let mut chars = input.chars();
-    let mut preproclen: usize = 0;
+    let mut skip: isize = 0;
+    let mut tmp: String = String::new();
     preproccessed.push(String::new());
-    while let Some(letter) = chars.next(){
+    for (i, letter) in input.chars().enumerate(){
+        if skip > 0{
+            skip-=1;
+            continue;
+        }
         match letter{
-            ')' | '('| '\n' | '>' | '-'  | '*' | '+' | '/' | '=' | '!' | ',' | '}' | '{' | '[' | ']'=> {
+            ')' | '('| '\n' | '>' | '<'  | '*' | '+' | '/' | '=' | '!' | ',' | '}' | '{' | '[' | ']'=> {
+                preproccessed.push(tmp);
                 preproccessed.push(letter.to_string());
-                preproccessed.push(String::new());
-                preproclen+=2;
+                tmp = String::new();
+                //preproclen+=2;
             }
-            '<' => {
-                preproccessed.push("<".to_string());
-                preproclen+=1;
-                if input.len() > i{
-                    if input.chars().nth(i+1) == Some('-'){
-                        preproccessed[preproclen].push('-');
-                        chars.next();
-                        i+=1;
-                    }
+            '-' => {
+                if preproccessed.last() == Some(&String::from("<")){
+                    preproccessed.last_mut().unwrap().push('-');
                 }
-                preproclen+=1;
-                preproccessed.push(String::new());
+                else{
+                    preproccessed.push(tmp);
+                    preproccessed.push(String::from("-"));
+                    tmp = String::new();
+                }
             }
             '\"' => {
+                preproccessed.push(tmp);
                 preproccessed.push("\"".to_string());
-                preproccessed.push(String::new());
-                preproclen+=2;
+                tmp = String::new();
+                let mut j = i+1;
                 'strloop: loop{
-                    let character = chars.next();
-                    match character{
-                        Some('\"') => {
+                    match input.get(j..j+1){
+                        Some("\"") => {
+                            preproccessed.push(tmp);
+                            tmp = String::new();
                             preproccessed.push("\"".to_string());
-                            preproclen+=1;
+                            skip+=1;
                             break 'strloop;
                         },
                         None => break 'strloop,
-                        _ => preproccessed[preproclen].push(character.unwrap()),
-
+                        Some(n) => tmp.push(n.as_bytes()[0] as char),
                     }
+                    j+=1;
+                    skip+=1;
                 }
             }
             ' ' => {
+                preproccessed.push(tmp);
+                tmp = String::new();
                 preproccessed.push(String::new());
-                preproclen+=1;
+                //preproclen+=1;
             }
-            _ => preproccessed[preproclen].push(letter),
+            _ => tmp.push(letter),
         }
-        i+=1;
     }
-
 }
 
 fn replace_empty_strings(preproccessed: &mut Vec<String>){
@@ -679,7 +622,6 @@ impl Compiler {
         let mut preproccessed: Vec<String> = Vec::new();
         preproccess(&mut preproccessed, self.input.clone());
 
-
         //replace empty strings so they don't cause problems
         replace_empty_strings(&mut preproccessed);
 
@@ -692,7 +634,6 @@ impl Compiler {
             vars: Vec::new(),
             funcs: vec!["DISPLAY".to_string(), "INPUT".to_string(), "RANDOM".to_string(), "INSERT".to_string(), "REMOVE".to_string(), "APPEND".to_string(), "LENGTH".to_string()],
             skip: 0,
-            block_count: 0,
             line_num: 0,
         };
         // return types specifies erorr None is no error Some is an error.
